@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, uploads } from '@/db'
-import { isAuthorisedUploader, unauthorised } from '@/lib/auth/upload-guard'
+import { requireAdminApi } from '@/lib/auth/require-role'
 import { getVideoProvider } from '@/lib/video'
 
 export const dynamic = 'force-dynamic'
@@ -24,8 +24,9 @@ async function loadUpload(id: string) {
  * source of truth rather than anything the client remembers, so a resume works
  * even from a different device or after a browser crash.
  */
-export async function GET(request: Request, { params }: Params) {
-  if (!isAuthorisedUploader(request)) return unauthorised()
+export async function GET(_request: Request, { params }: Params) {
+  const gate = await requireAdminApi()
+  if (gate.denied) return gate.denied
 
   const upload = await loadUpload((await params).id)
   if (!upload) return Response.json({ error: 'not_found' }, { status: 404 })
@@ -69,7 +70,8 @@ const signSchema = z.object({
 
 /** Presign a batch of part URLs. */
 export async function POST(request: Request, { params }: Params) {
-  if (!isAuthorisedUploader(request)) return unauthorised()
+  const gate = await requireAdminApi()
+  if (gate.denied) return gate.denied
 
   const upload = await loadUpload((await params).id)
   if (!upload) return Response.json({ error: 'not_found' }, { status: 404 })
@@ -106,8 +108,9 @@ export async function POST(request: Request, { params }: Params) {
 }
 
 /** Abandon the upload and release the stored parts. */
-export async function DELETE(request: Request, { params }: Params) {
-  if (!isAuthorisedUploader(request)) return unauthorised()
+export async function DELETE(_request: Request, { params }: Params) {
+  const gate = await requireAdminApi()
+  if (gate.denied) return gate.denied
 
   const upload = await loadUpload((await params).id)
   if (!upload) return Response.json({ error: 'not_found' }, { status: 404 })

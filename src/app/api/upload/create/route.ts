@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, uploads, videos } from '@/db'
-import { isAuthorisedUploader, unauthorised } from '@/lib/auth/upload-guard'
+import { requireAdminApi } from '@/lib/auth/require-role'
 import { env } from '@/lib/env'
 import { uniqueSlug } from '@/lib/slug'
 import { getVideoProvider } from '@/lib/video'
@@ -28,7 +28,8 @@ const bodySchema = z.object({
  * never sees them (plan §5.1).
  */
 export async function POST(request: Request) {
-  if (!isAuthorisedUploader(request)) return unauthorised()
+  const gate = await requireAdminApi()
+  if (gate.denied) return gate.denied
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
       language,
       status: 'uploading',
       provider: provider.id,
+      // Attribution, which the old shared bearer token could not give: every
+      // row now names the operator who put it there.
+      uploaderId: gate.user.id,
     })
     .returning({ id: videos.id, slug: videos.slug })
 
@@ -89,6 +93,7 @@ export async function POST(request: Request) {
     .insert(uploads)
     .values({
       videoId: video.id,
+      userId: gate.user.id,
       objectKey: plan.objectKey,
       multipartId: plan.multipartId,
       partSizeBytes: plan.partSizeBytes,

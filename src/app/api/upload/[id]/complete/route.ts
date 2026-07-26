@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, uploads, videos } from '@/db'
-import { isAuthorisedUploader, unauthorised } from '@/lib/auth/upload-guard'
+import { requireAdminApi } from '@/lib/auth/require-role'
 import { enqueue } from '@/lib/jobs/queue'
 import { getVideoProvider } from '@/lib/video'
 
@@ -17,8 +17,9 @@ type Params = { params: Promise<{ id: string }> }
  * body: the client's idea of what it uploaded can be stale or wrong, and R2
  * already knows exactly which parts and ETags it holds.
  */
-export async function POST(request: Request, { params }: Params) {
-  if (!isAuthorisedUploader(request)) return unauthorised()
+export async function POST(_request: Request, { params }: Params) {
+  const gate = await requireAdminApi()
+  if (gate.denied) return gate.denied
 
   const { id } = await params
   if (!z.uuid().safeParse(id).success) {
