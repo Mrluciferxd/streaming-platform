@@ -32,7 +32,8 @@
     "verify:hls": "tsx scripts/verify-hls.ts",
     "seed:video": "tsx --env-file-if-exists=.env.local scripts/seed-video.ts",
     "check:analytics": "tsx --env-file-if-exists=.env.local scripts/check-analytics.ts",
-    "check:history": "node --import tsx --env-file-if-exists=.env.local --test scripts/check-history.ts"
+    "check:history": "node --import tsx --env-file-if-exists=.env.local --test scripts/check-history.ts",
+    "seed:demo": "tsx --env-file-if-exists=.env.local scripts/seed-demo.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",
