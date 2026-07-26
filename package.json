@@ -24,12 +24,14 @@
     "worker": "tsx --env-file-if-exists=.env.local worker/index.ts",
     "worker:dev": "tsx watch --env-file-if-exists=.env.local worker/index.ts",
     "transcode:local": "tsx scripts/transcode-local.ts",
-    "verify:hls": "tsx scripts/verify-hls.ts"
+    "verify:hls": "tsx scripts/verify-hls.ts",
+    "seed:video": "tsx --env-file-if-exists=.env.local scripts/seed-video.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",
     "@aws-sdk/s3-request-presigner": "^3.1095.0",
     "drizzle-orm": "^0.45.2",
+    "hls.js": "^1.6.16",
     "next": "^16.2.12",
     "postgres": "^3.4.9",
     "react": "^19.2.8",

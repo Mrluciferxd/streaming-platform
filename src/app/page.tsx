@@ -1,46 +1,77 @@
-import { sql } from 'drizzle-orm'
-import { db } from '@/db'
+import Link from 'next/link'
 
-export const dynamic = 'force-dynamic'
+import { Rail } from '@/components/Rail'
+import { listByCategory, listCategoriesWithVideos, listLatest, listTrending } from '@/lib/queries/videos'
 
 /**
- * Placeholder home page. Its only real job right now is proving the deploy path
- * end-to-end — plan §12 Phase 1: "Deploy a hello-world to production on day 3."
+ * Homepage rails (plan §7 MVP).
+ *
+ * ISR with a 60s window: the content changes when something is published, not
+ * per request, so nearly every visitor gets a static page from the edge. That is
+ * what keeps TTFB under the 200 ms target in plan §8 without a cache layer in
+ * front of the database.
+ *
+ * "Continue Watching" is deliberately absent here — it is per-viewer, and
+ * putting it on a shared cached page would either leak one viewer's history to
+ * another or make the page uncacheable. It renders client-side from localStorage
+ * until accounts exist.
  */
+export const revalidate = 60
+
+export const metadata = {
+  title: 'Watch free regional films, series and shorts',
+  description:
+    'Free streaming of Gujarati and Hindi short films, features, web series, music and documentaries.',
+}
+
 export default async function Home() {
-  let dbStatus: string
-  try {
-    const [row] = await db.execute<{ now: Date }>(sql`select now() as now`)
-    dbStatus = row ? `connected · ${row.now}` : 'connected'
-  } catch (error) {
-    dbStatus = `unreachable — ${error instanceof Error ? error.message : String(error)}`
+  const [trending, latest, categories] = await Promise.all([
+    listTrending(12),
+    listLatest(12),
+    listCategoriesWithVideos(4),
+  ])
+
+  const categoryRails = await Promise.all(
+    categories.map(async (category) => ({
+      ...category,
+      videos: (await listByCategory(category.slug, 12)).items,
+    })),
+  )
+
+  if (latest.items.length === 0) {
+    return <EmptyLibrary />
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-6 py-16">
-      <div>
-        <p className="text-sm font-medium text-neutral-500">Phase 1 · Foundation</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Streaming Platform</h1>
-      </div>
+    <div className="mx-auto max-w-7xl py-4">
+      <Rail title="Trending this week" videos={trending} priority />
+      <Rail title="New releases" href="/latest" videos={latest.items} />
 
-      <dl className="grid gap-3 text-sm">
-        <Row label="Video provider" value={process.env.VIDEO_PROVIDER ?? 'r2'} />
-        <Row label="CDN origin" value={process.env.NEXT_PUBLIC_CDN_URL ?? 'not configured'} />
-        <Row label="Database" value={dbStatus} />
-      </dl>
-
-      <p className="text-sm text-neutral-500">
-        Next up: TUS resumable upload, the FFmpeg ladder, and HLS packaging (plan §12 Phase 2).
-      </p>
-    </main>
+      {categoryRails.map((category) => (
+        <Rail
+          key={category.id}
+          title={category.name}
+          href={`/c/${category.slug}`}
+          videos={category.videos}
+        />
+      ))}
+    </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function EmptyLibrary() {
   return (
-    <div className="flex flex-col gap-0.5 border-t border-neutral-200 pt-3 dark:border-neutral-800">
-      <dt className="text-neutral-500">{label}</dt>
-      <dd className="font-mono text-xs break-all">{value}</dd>
+    <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 px-6 py-24 text-center">
+      <h1 className="text-2xl font-semibold tracking-tight">Nothing published yet</h1>
+      <p className="text-sm text-neutral-500">
+        Transcode a video and publish it, and it will appear here. For a local test run:
+      </p>
+      <code className="rounded bg-neutral-100 px-3 py-2 text-left text-xs dark:bg-neutral-900">
+        npm run seed:video
+      </code>
+      <Link href="/api/health" className="text-sm text-red-600 hover:underline">
+        Check service health
+      </Link>
     </div>
   )
 }

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."storage_provider" ADD VALUE 'local';

@@ -12,10 +12,16 @@ let cached: VideoProvider | null = null
 export async function getVideoProvider(): Promise<VideoProvider> {
   if (cached) return cached
 
-  cached =
-    env.VIDEO_PROVIDER === 'bunny'
-      ? (await import('./bunny')).bunnyProvider
-      : (await import('./r2')).r2Provider
+  switch (env.VIDEO_PROVIDER) {
+    case 'bunny':
+      cached = (await import('./bunny')).bunnyProvider
+      break
+    case 'local':
+      cached = (await import('./local')).localProvider
+      break
+    default:
+      cached = (await import('./r2')).r2Provider
+  }
 
   return cached
 }

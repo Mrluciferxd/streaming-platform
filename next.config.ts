@@ -8,6 +8,7 @@ import type { NextConfig } from 'next'
  * so the CDN must be in `connect-src`, not just `media-src`).
  */
 const cdnOrigin = process.env.NEXT_PUBLIC_CDN_URL ?? ''
+const isDev = process.env.NODE_ENV !== 'production'
 
 const csp = [
   `default-src 'self'`,
@@ -16,11 +17,17 @@ const csp = [
   `object-src 'none'`,
   `img-src 'self' data: blob: ${cdnOrigin}`,
   `media-src 'self' blob: ${cdnOrigin}`,
+  // hls.js fetches segments with XHR/fetch, so the CDN must be in connect-src
+  // and not only media-src.
   `connect-src 'self' ${cdnOrigin}`,
   `font-src 'self'`,
   // 'unsafe-inline' for styles is required by Next's inlined critical CSS.
   `style-src 'self' 'unsafe-inline'`,
-  `script-src 'self' 'unsafe-inline'`,
+  // 'unsafe-eval' is development only: React's dev build uses eval() to
+  // reconstruct call stacks, and Turbopack's HMR runtime needs it. Shipping it
+  // to production would undo most of the value of having a CSP at all.
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+  // hls.js runs its demuxer in a worker created from a blob URL.
   `worker-src 'self' blob:`,
 ]
   .join('; ')

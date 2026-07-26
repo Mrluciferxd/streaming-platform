@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+out
+build
+dist
+
+# Sample media IS uploaded: it is gitignored so it never enters the repo, but a
+# demo deploy needs something to play. Delete this file's exception and set
+# VIDEO_PROVIDER=r2 for anything real.
+!public/media

@@ -61,7 +61,8 @@ export const reportStatus = pgEnum('report_status', ['open', 'reviewing', 'actio
 export const reactionType = pgEnum('reaction_type', ['like', 'dislike'])
 export const creatorStatus = pgEnum('creator_status', ['pending', 'active', 'suspended'])
 export const payoutStatus = pgEnum('payout_status', ['pending', 'processing', 'paid', 'failed'])
-export const storageProvider = pgEnum('storage_provider', ['r2', 'bunny'])
+// 'local' is a development-only filesystem provider; see src/lib/video/local.ts.
+export const storageProvider = pgEnum('storage_provider', ['r2', 'bunny', 'local'])
 
 export const jobStatus = pgEnum('job_status', [
   'queued',

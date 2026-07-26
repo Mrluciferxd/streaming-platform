@@ -170,7 +170,7 @@ export type PlaybackSource = {
 }
 
 export interface VideoProvider {
-  readonly id: 'r2' | 'bunny'
+  readonly id: 'r2' | 'bunny' | 'local'
 
   /**
    * Mint a direct-to-storage upload ticket. Bytes must never transit the

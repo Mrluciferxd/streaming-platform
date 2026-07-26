@@ -23,3 +23,8 @@ npm-debug.log*
 *.mov
 *.m4s
 *.m3u8
+public/media
+.vercel
+.env*
+
+.vercel

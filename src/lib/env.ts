@@ -20,8 +20,20 @@ const serverSchema = z.object({
 
   REDIS_URL: z.string().url().optional(),
 
-  // Which video provider is live. See src/lib/video/index.ts.
-  VIDEO_PROVIDER: z.enum(['r2', 'bunny']).default('r2'),
+  /**
+   * Which video provider is live. See src/lib/video/index.ts.
+   *
+   * `local` writes into public/media/ and is rejected in production below — it
+   * serves every byte through the application process, which is exactly what
+   * plan §3 exists to prevent.
+   */
+  VIDEO_PROVIDER: z.enum(['r2', 'bunny', 'local']).default('r2'),
+
+  /** Explicit opt-in to VIDEO_PROVIDER=local in production. Demo deploys only. */
+  ALLOW_LOCAL_MEDIA: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((v) => v === '1'),
 
   // --- Cloudflare R2 (provider: r2) ---
   R2_ACCOUNT_ID: z.string().optional(),
@@ -80,6 +92,25 @@ export const env = parsed.data
  * credential set, and only the selected one is required.
  */
 function assertProviderConfig() {
+  if (env.VIDEO_PROVIDER === 'local') {
+    if (env.NODE_ENV === 'production' && !env.ALLOW_LOCAL_MEDIA) {
+      throw new Error(
+        'VIDEO_PROVIDER=local has no signed access, no cache-control strategy, ' +
+          'and ships the whole library with the deployment. Set ALLOW_LOCAL_MEDIA=1 ' +
+          'only for a throwaway demo deploy; never for real traffic.',
+      )
+    }
+
+    if (env.NODE_ENV === 'production') {
+      console.warn(
+        '[env] VIDEO_PROVIDER=local in production. Media is served as static ' +
+          'assets, not from R2, and every byte is billed at platform bandwidth ' +
+          'rates — the exact cost profile plan §0 exists to avoid. Demo only.',
+      )
+    }
+    return
+  }
+
   if (env.VIDEO_PROVIDER === 'r2') {
     const required = [
       'R2_ACCOUNT_ID',
