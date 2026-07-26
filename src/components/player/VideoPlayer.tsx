@@ -20,13 +20,22 @@ type Props = {
   posterUrl: string | null
   spriteVttUrl: string | null
   title: string
+  /** Groups telemetry for one viewer without requiring an account. */
+  sessionId?: string
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const CONTROLS_HIDE_MS = 3000
 
-export function VideoPlayer({ videoId, masterUrl, posterUrl, spriteVttUrl, title }: Props) {
-  const { videoRef, state, controls } = useHlsPlayer(masterUrl, videoId)
+export function VideoPlayer({
+  videoId,
+  masterUrl,
+  posterUrl,
+  spriteVttUrl,
+  title,
+  sessionId,
+}: Props) {
+  const { videoRef, state, controls } = useHlsPlayer(masterUrl, videoId, sessionId)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

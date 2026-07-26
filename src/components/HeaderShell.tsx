@@ -19,7 +19,13 @@ type Category = { slug: string; name: string }
  * makes it look like a site you are meant to query rather than one you are
  * meant to explore.
  */
-export function HeaderShell({ categories }: { categories: Category[] }) {
+export function HeaderShell({
+  categories,
+  user,
+}: {
+  categories: Category[]
+  user: { displayName: string } | null
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const [scrolled, setScrolled] = useState(false)
@@ -124,11 +130,35 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
             />
           </form>
 
-          {/* Profile avatar. A placeholder until accounts exist. */}
-          <div
-            aria-hidden
-            className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-primary to-secondary ring-2 ring-white shadow-sm"
-          />
+          {user ? (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/my-list"
+                className="hidden text-sm font-semibold text-ink-soft transition hover:text-primary sm:block"
+              >
+                My List
+              </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  await fetch('/api/auth/login', { method: 'DELETE', credentials: 'same-origin' })
+                  router.refresh()
+                }}
+                title={`Signed in as ${user.displayName} — sign out`}
+                aria-label="Sign out"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-xs font-extrabold text-white shadow-sm ring-2 ring-white"
+              >
+                {user.displayName.slice(0, 1).toUpperCase()}
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/account"
+              className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>

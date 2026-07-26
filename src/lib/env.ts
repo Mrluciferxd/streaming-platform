@@ -67,6 +67,13 @@ const serverSchema = z.object({
    */
   UPLOAD_ADMIN_TOKEN: z.string().min(32),
 
+  /**
+   * Shared secret for the cron endpoints. Vercel Cron sends it as a bearer
+   * token; without it /api/cron/* is a public trigger for minutes of database
+   * work.
+   */
+  CRON_SECRET: z.string().min(32),
+
   /** Largest source file accepted, in bytes. Default 20 GB. */
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(20 * 1024 ** 3),
 

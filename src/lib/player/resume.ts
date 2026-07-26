@@ -48,6 +48,30 @@ function writeAll(entries: Record<string, ResumeEntry>): void {
   }
 }
 
+/**
+ * Mirror the position to the server.
+ *
+ * localStorage stays the source of truth for anonymous viewers and as an
+ * offline-tolerant cache for everyone; the server copy is what makes Continue
+ * Watching follow someone to another device. The endpoint answers 204 for
+ * signed-out callers, so this is a cheap no-op rather than an error path.
+ */
+function syncToServer(videoId: string, positionSec: number, durationSec: number): void {
+  if (typeof fetch === 'undefined') return
+
+  void fetch('/api/history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      videoId,
+      positionSec: Math.floor(positionSec),
+      durationSec: Math.floor(durationSec),
+    }),
+    credentials: 'same-origin',
+    keepalive: true,
+  }).catch(() => {})
+}
+
 export function savePosition(videoId: string, positionSec: number, durationSec: number): void {
   if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec) || durationSec <= 0) return
 
@@ -67,6 +91,7 @@ export function savePosition(videoId: string, positionSec: number, durationSec: 
   }
 
   writeAll(entries)
+  syncToServer(videoId, positionSec, durationSec)
 }
 
 export function getPosition(videoId: string): number | null {

@@ -7,6 +7,7 @@ import { VideoPlayer } from './VideoPlayer'
 type PlaybackResponse = {
   videoId: string
   title: string
+  sessionId: string
   source: {
     masterUrl: string
     posterUrl: string | null
@@ -85,6 +86,7 @@ export function WatchPlayer({ slug, posterUrl }: { slug: string; posterUrl: stri
       posterUrl={data.source.posterUrl}
       spriteVttUrl={data.source.spriteVttUrl}
       title={data.title}
+      sessionId={data.sessionId}
     />
   )
 }

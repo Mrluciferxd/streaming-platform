@@ -4,6 +4,7 @@ import type Hls from 'hls.js'
 import type { Level } from 'hls.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { stopTracking, track } from '@/lib/player/analytics'
 import { getPosition, savePosition } from '@/lib/player/resume'
 
 /**
@@ -59,10 +60,17 @@ const START_HEIGHT = 480
  */
 const INITIAL_BANDWIDTH_ESTIMATE = 1_500_000
 
-export function useHlsPlayer(masterUrl: string, videoId: string) {
+export function useHlsPlayer(masterUrl: string, videoId: string, sessionId?: string) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const resumedRef = useRef(false)
+  /**
+   * Wall-clock of the last emitted progress event, used to derive real watch
+   * time. Counting `play` events would overcount — a viewer who pauses and
+   * resumes ten times has watched one video, not ten — and watch time is what
+   * the trending rail ranks on and what creator revenue share is computed from.
+   */
+  const lastProgressRef = useRef<number | null>(null)
 
   const [state, setState] = useState<PlayerState>({
     ready: false,
@@ -232,6 +240,84 @@ export function useHlsPlayer(masterUrl: string, videoId: string) {
       video.removeEventListener('ended', onEnded)
     }
   }, [patch, videoId])
+
+  // --- Telemetry -------------------------------------------------------------
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !sessionId) return
+
+    const emit = (eventType: Parameters<typeof track>[0]['eventType'], watchedSec?: number) =>
+      track({
+        videoId,
+        sessionId,
+        eventType,
+        positionSec: Math.floor(video.currentTime),
+        watchedSec,
+        variant: state.activeHeight ? `${state.activeHeight}p` : undefined,
+      })
+
+    const onPlay = () => {
+      lastProgressRef.current = Date.now()
+      emit('play')
+    }
+
+    const onPause = () => {
+      emit('pause', consumeWatched())
+      lastProgressRef.current = null
+    }
+
+    const onEnded = () => {
+      emit('complete', consumeWatched())
+      lastProgressRef.current = null
+    }
+
+    const onSeeked = () => {
+      // Discard the elapsed span across a seek — the viewer skipped it rather
+      // than watching it, and crediting it would inflate watch time.
+      lastProgressRef.current = Date.now()
+      emit('seek')
+    }
+
+    const onWaiting = () => emit('rebuffer')
+    const onError = () => emit('error')
+
+    /**
+     * Seconds actually watched since the last emission, from wall-clock rather
+     * than `currentTime`, so a 2x playback rate does not count double and a
+     * seek does not count as viewing.
+     */
+    function consumeWatched(): number | undefined {
+      const since = lastProgressRef.current
+      if (since === null) return undefined
+
+      lastProgressRef.current = Date.now()
+      const seconds = Math.round((Date.now() - since) / 1000)
+      // Guards against a backgrounded tab reporting hours in one interval.
+      return seconds > 0 && seconds <= 300 ? seconds : undefined
+    }
+
+    const progressTimer = setInterval(() => {
+      if (!video.paused && !video.ended) emit('progress', consumeWatched())
+    }, 15_000)
+
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
+    video.addEventListener('ended', onEnded)
+    video.addEventListener('seeked', onSeeked)
+    video.addEventListener('waiting', onWaiting)
+    video.addEventListener('error', onError)
+
+    return () => {
+      clearInterval(progressTimer)
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
+      video.removeEventListener('seeked', onSeeked)
+      video.removeEventListener('waiting', onWaiting)
+      video.removeEventListener('error', onError)
+      stopTracking()
+    }
+  }, [videoId, sessionId, state.activeHeight])
 
   // --- Persist resume position ----------------------------------------------
   useEffect(() => {

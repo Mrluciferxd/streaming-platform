@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 
+import { MyListButton } from '@/components/MyListButton'
 import { formatRating, formatRuntime, languageLabel } from '@/lib/format'
 import type { VideoCard as VideoCardData } from '@/lib/queries/videos'
 
@@ -17,7 +18,17 @@ import type { VideoCard as VideoCardData } from '@/lib/queries/videos'
  * in — and a 2:3 composition cropped to a 21:9 band loses the character it was
  * built around.
  */
-export function Hero({ video, description }: { video: VideoCardData; description?: string | null }) {
+export function Hero({
+  video,
+  description,
+  signedIn = false,
+  inList = false,
+}: {
+  video: VideoCardData
+  description?: string | null
+  signedIn?: boolean
+  inList?: boolean
+}) {
   const art = video.portraitUrl ?? video.posterUrl
 
   return (
@@ -74,23 +85,12 @@ export function Hero({ video, description }: { video: VideoCardData; description
               Watch now
             </Link>
 
-            <Link
-              href={`/watch/${video.slug}`}
-              className="flex items-center gap-2 rounded-full bg-mist px-7 py-3 text-sm font-bold text-ink transition hover:bg-secondary-soft sm:text-base"
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                aria-hidden="true"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              My List
-            </Link>
+<MyListButton
+              videoId={video.id}
+              initiallyInList={inList}
+              signedIn={signedIn}
+              returnTo="/"
+            />
           </div>
         </div>
 

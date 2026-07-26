@@ -28,7 +28,9 @@ import {
 export const videoEvents = pgTable(
   'video_events',
   {
-    id: bigint('id', { mode: 'number' }).notNull(),
+    // GENERATED ALWAYS in the real DDL, so it must be marked generated here too
+    // — otherwise drizzle includes it in inserts and Postgres rejects them.
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity(),
     videoId: uuid('video_id').notNull(),
     userId: uuid('user_id'),
     sessionId: uuid('session_id').notNull(),

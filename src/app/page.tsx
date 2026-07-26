@@ -1,7 +1,11 @@
 import Link from 'next/link'
 
+import { and, eq } from 'drizzle-orm'
+
 import { Hero } from '@/components/Hero'
 import { Row } from '@/components/Row'
+import { db, watchlist } from '@/db'
+import { getSessionUser } from '@/lib/auth/session'
 import {
   getVideoBySlug,
   listByCategory,
@@ -22,7 +26,16 @@ import {
  * shared cached page would either leak one viewer's history to the next or make
  * the page uncacheable.
  */
-export const revalidate = 60
+/**
+ * Rendered per request rather than ISR-cached.
+ *
+ * The billboard now reflects whether *this* viewer has the featured title in
+ * their list, which is per-person state. A shared cached page would show one
+ * viewer's list status to everyone. The rows themselves are still cheap — the
+ * queries behind them are all index scans — and Redis caching of the shared
+ * parts (plan §8) is the right next step, not caching the whole page.
+ */
+export const dynamic = 'force-dynamic'
 
 export const metadata = {
   title: 'Watch anime free — subbed and dubbed',
@@ -41,7 +54,20 @@ export default async function Home() {
 
   // The billboard leads on whatever is trending, falling back to newest.
   const featured = trending[0] ?? latest.items[0]!
-  const featuredDetail = await getVideoBySlug(featured.slug)
+  const [featuredDetail, user] = await Promise.all([
+    getVideoBySlug(featured.slug),
+    getSessionUser(),
+  ])
+
+  const inList = user
+    ? (
+        await db
+          .select({ videoId: watchlist.videoId })
+          .from(watchlist)
+          .where(and(eq(watchlist.userId, user.id), eq(watchlist.videoId, featured.id)))
+          .limit(1)
+      ).length > 0
+    : false
 
   const categoryRows = await Promise.all(
     categories.map(async (category) => ({
@@ -52,7 +78,12 @@ export default async function Home() {
 
   return (
     <>
-      <Hero video={featured} description={featuredDetail?.description} />
+      <Hero
+        video={featured}
+        description={featuredDetail?.description}
+        signedIn={Boolean(user)}
+        inList={inList}
+      />
 
       <div className="relative z-10 pb-12">
         <Row title="Top 10 This Week" videos={trending} ranked priority />
