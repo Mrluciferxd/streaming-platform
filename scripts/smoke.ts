@@ -78,7 +78,6 @@ let resumeAt = 0
 let resumeAgainAt = 0
 
 /** Continue Watching hides anything below this — see src/app/api/history. */
-const MIN_RESUME_SECONDS = 15
 
 describe('public pages', () => {
   it('serves the homepage as HTML', async () => {
@@ -169,7 +168,7 @@ describe('playback', () => {
     title = body.title
     durationSec = body.durationSec
 
-    assert.ok(durationSec > MIN_RESUME_SECONDS, `${slug} is too short to resume (${durationSec}s)`)
+    assert.ok(durationSec > 0, `${slug} has no duration`)
   })
 
   it('404s an unknown slug', async () => {
@@ -260,10 +259,20 @@ describe('accounts', () => {
   })
 
   it('records a resume position and reads it back', async () => {
-    // The position has to land inside the band Continue Watching shows: past
-    // MIN_RESUME_SECONDS, and short of the 95% that counts as finished.
-    resumeAt = Math.max(MIN_RESUME_SECONDS, Math.floor(durationSec * 0.4))
+    /**
+     * The position must land inside the band Continue Watching shows: past the
+     * resume floor and short of the 95% that counts as finished.
+     *
+     * Derived from the runtime rather than pinned to the absolute floor. The
+     * previous form was `max(MIN_RESUME_SECONDS, duration * 0.4)`, which for
+     * any clip shorter than the floor produced a position past the end of the
+     * video — the server clamps that to the duration, which reads as 100%
+     * watched, so the title is "finished" and never appears. The assertion was
+     * real; the position it chose was impossible.
+     */
+    resumeAt = Math.max(1, Math.floor(durationSec * 0.4))
     resumeAgainAt = Math.min(resumeAt + 1, Math.floor(durationSec * 0.9))
+    assert.ok(resumeAt < resumeAgainAt, `no usable resume band in ${durationSec}s`)
 
     const posted = await req('/api/history', json({ videoId, positionSec: resumeAt, durationSec }))
     assert.equal(posted.status, 204)

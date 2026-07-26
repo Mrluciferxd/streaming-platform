@@ -11,7 +11,13 @@ const KEY = 'resume.v1'
 const MAX_ENTRIES = 200
 
 /** Below this, the viewer barely started; above the tail, they effectively finished. */
+/**
+ * Must match the server's rule in src/app/api/history/route.ts. If the two
+ * disagree, a position kept locally is dropped server-side (or the reverse) and
+ * Continue Watching differs depending on whether you are signed in.
+ */
 const MIN_RESUME_SECONDS = 15
+const MIN_RESUME_FRACTION = 0.05
 const COMPLETE_FRACTION = 0.95
 
 export type ResumeEntry = {
@@ -79,7 +85,9 @@ export function savePosition(videoId: string, positionSec: number, durationSec: 
 
   // Finished, or barely started: nothing worth resuming. Clearing on completion
   // is what stops a watched video sitting in Continue Watching forever.
-  if (positionSec < MIN_RESUME_SECONDS || positionSec / durationSec >= COMPLETE_FRACTION) {
+  const minResume = Math.min(MIN_RESUME_SECONDS, durationSec * MIN_RESUME_FRACTION)
+
+  if (positionSec < minResume || positionSec / durationSec >= COMPLETE_FRACTION) {
     delete entries[videoId]
   } else {
     entries[videoId] = {

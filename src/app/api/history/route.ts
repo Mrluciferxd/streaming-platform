@@ -14,8 +14,20 @@ const bodySchema = z.object({
   durationSec: z.number().int().min(1).max(86_400),
 })
 
-/** Below this a viewer barely started; above the tail they effectively finished. */
+/**
+ * When a title belongs in Continue Watching.
+ *
+ * The lower bound is the smaller of an absolute floor and a fraction of the
+ * runtime, not the floor alone. A flat 15s is right for a 24-minute episode and
+ * incoherent for a two-minute music video or an AMV — both of which are
+ * top-level categories here. With a flat floor, anything shorter than ~16s has
+ * an *empty* band: every position that clears the floor is at or past the end,
+ * so it is simultaneously "far enough in to resume" and "finished", and the
+ * title can never appear. Scaling the floor down for short content keeps the
+ * band non-empty at every runtime.
+ */
 const MIN_RESUME_SECONDS = 15
+const MIN_RESUME_FRACTION = 0.05
 const COMPLETE_FRACTION = 0.95
 
 /**
@@ -53,7 +65,10 @@ export async function GET() {
         eq(watchHistory.userId, user.id),
         eq(watchHistory.completed, false),
         publiclyVisible,
-        sql`${watchHistory.positionSec} >= ${MIN_RESUME_SECONDS}`,
+        sql`${watchHistory.positionSec} >= least(
+              ${MIN_RESUME_SECONDS}::numeric,
+              coalesce(${videos.durationSec}, ${MIN_RESUME_SECONDS}) * ${MIN_RESUME_FRACTION}
+            )`,
       ),
     )
     .orderBy(desc(watchHistory.watchedAt))
