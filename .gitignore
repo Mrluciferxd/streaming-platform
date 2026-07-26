@@ -1,0 +1,25 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+.env
+.env.local
+.env.*.local
+
+*.tsbuildinfo
+next-env.d.ts
+
+.DS_Store
+*.log
+npm-debug.log*
+
+# Local media scratch — never commit video
+/media/
+/tmp/
+*.mp4
+*.mkv
+*.mov
+*.m4s
+*.m3u8
