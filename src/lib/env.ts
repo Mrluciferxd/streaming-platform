@@ -47,6 +47,21 @@ const serverSchema = z.object({
   PLAYBACK_TOKEN_TTL_SEC: z.coerce.number().int().positive().default(21600),
 
   AUTH_SECRET: z.string().min(32),
+
+  /**
+   * Interim shared secret for the upload endpoints, which hand out presigned
+   * write URLs for the media bucket. Removed once Phase 3 auth lands — see
+   * src/lib/auth/upload-guard.ts.
+   */
+  UPLOAD_ADMIN_TOKEN: z.string().min(32),
+
+  /** Largest source file accepted, in bytes. Default 20 GB. */
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(20 * 1024 ** 3),
+
+  /** Scratch space for the transcode worker. Needs several GB free. */
+  WORKER_TMP_DIR: z.string().default('/tmp/transcode'),
+  /** Concurrent transcodes per worker process. One per ~8 vCPU (plan §5). */
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
 })
 
 const parsed = serverSchema.safeParse(process.env)

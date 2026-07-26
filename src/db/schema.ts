@@ -63,6 +63,20 @@ export const creatorStatus = pgEnum('creator_status', ['pending', 'active', 'sus
 export const payoutStatus = pgEnum('payout_status', ['pending', 'processing', 'paid', 'failed'])
 export const storageProvider = pgEnum('storage_provider', ['r2', 'bunny'])
 
+export const jobStatus = pgEnum('job_status', [
+  'queued',
+  'running',
+  'done',
+  'failed', // will be retried
+  'dead', // exhausted max_attempts, needs a human
+])
+
+export const uploadStatus = pgEnum('upload_status', [
+  'pending',
+  'completed',
+  'aborted',
+])
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
@@ -502,6 +516,131 @@ export const payouts = pgTable(
   (t) => [
     index('payouts_creator_idx').on(t.creatorId, t.createdAt.desc()),
     check('payouts_amount_positive', sql`${t.amountPaise} >= 0`),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Job queue, on Postgres rather than the BullMQ/Redis pairing in plan §4.
+ *
+ * The plan's stack is right for high-frequency, short-lived jobs. Transcoding
+ * is the opposite: tens to hundreds of jobs a day, each running for minutes.
+ * At that shape `SELECT … FOR UPDATE SKIP LOCKED` is more than fast enough, and
+ * it buys three things Redis cannot:
+ *
+ *   - No second stateful service to run, back up, or lose. Redis is still worth
+ *     adding for the hot-query cache and rate limiting (plan §8) — it just is
+ *     not needed to move jobs.
+ *   - Enqueue is transactional with the video row. A video can never end up
+ *     `processing` with no job, or the reverse, because both writes commit
+ *     together.
+ *   - Jobs survive a restart without an AOF/RDB durability conversation.
+ *
+ * Swap to BullMQ if job volume ever reaches the thousands per minute. It will
+ * not, because each job is a several-minute FFmpeg run.
+ */
+export const jobs = pgTable(
+  'jobs',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    kind: varchar('kind', { length: 40 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    status: jobStatus('status').notNull().default('queued'),
+    priority: smallint('priority').notNull().default(0),
+
+    attempts: smallint('attempts').notNull().default(0),
+    maxAttempts: smallint('max_attempts').notNull().default(3),
+    /** Set into the future for exponential backoff between attempts. */
+    runAt: timestamp('run_at', { withTimezone: true }).notNull().defaultNow(),
+
+    lockedAt: timestamp('locked_at', { withTimezone: true }),
+    lockedBy: text('locked_by'),
+    /**
+     * A transcode can legitimately run 20+ minutes, so a plain lock timeout
+     * would either reap live jobs or leave dead ones stuck for ages. The worker
+     * heartbeats instead, and the reaper only requeues jobs whose heartbeat has
+     * actually gone stale.
+     */
+    heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }),
+    progress: smallint('progress').notNull().default(0),
+
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+
+    /**
+     * Prevents double-enqueueing the same work. Unique only among jobs that are
+     * still live, so re-running a finished job later is still allowed.
+     */
+    dedupeKey: text('dedupe_key'),
+  },
+  (t) => [
+    // The claim query's index. Partial, so it stays small no matter how much
+    // completed history accumulates.
+    index('jobs_claim_idx')
+      .on(t.priority.desc(), t.runAt)
+      .where(sql`${t.status} = 'queued'`),
+    uniqueIndex('jobs_dedupe_key')
+      .on(t.dedupeKey)
+      .where(sql`${t.status} in ('queued', 'running')`),
+    index('jobs_reaper_idx')
+      .on(t.heartbeatAt)
+      .where(sql`${t.status} = 'running'`),
+    index('jobs_dead_idx')
+      .on(t.createdAt.desc())
+      .where(sql`${t.status} = 'dead'`),
+    check('jobs_progress_range', sql`${t.progress} between 0 and 100`),
+  ],
+)
+
+/**
+ * Tracks an in-flight S3 multipart upload.
+ *
+ * Plan §5.1 asks for TUS, which Bunny speaks natively but R2 does not. The
+ * R2-native equivalent is S3 multipart: the client uploads parts directly to
+ * the bucket with presigned URLs and, after a dropped connection, asks which
+ * parts already landed and sends only the rest. Same property the plan actually
+ * wants — a creator on a flaky Indian mobile connection never re-sends a 2 GB
+ * file from zero.
+ *
+ * Bytes never transit the app server in either case.
+ */
+export const uploads = pgTable(
+  'uploads',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    videoId: uuid('video_id')
+      .notNull()
+      .references(() => videos.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+
+    objectKey: text('object_key').notNull(),
+    /** S3/R2 multipart upload id. Null for single-shot uploads. */
+    multipartId: text('multipart_id'),
+    partSizeBytes: bigint('part_size_bytes', { mode: 'number' }).notNull(),
+    totalBytes: bigint('total_bytes', { mode: 'number' }).notNull(),
+    totalParts: integer('total_parts').notNull(),
+
+    filename: text('filename').notNull(),
+    contentType: varchar('content_type', { length: 120 }).notNull(),
+
+    status: uploadStatus('status').notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    /** Abandoned multiparts still bill for storage until aborted. */
+    expiresAt: timestamp('expires_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '24 hours'`),
+  },
+  (t) => [
+    uniqueIndex('uploads_video_key').on(t.videoId).where(sql`${t.status} = 'pending'`),
+    index('uploads_expiry_idx')
+      .on(t.expiresAt)
+      .where(sql`${t.status} = 'pending'`),
   ],
 )
 

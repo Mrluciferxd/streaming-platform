@@ -1,5 +1,10 @@
 import { env } from '@/lib/env'
-import type { PlaybackSource, UploadTicket, VideoProvider } from './types'
+import type {
+  PlaybackSource,
+  ResumableUploadPlan,
+  UploadTicket,
+  VideoProvider,
+} from './types'
 
 /**
  * Bunny Stream. Managed upload → transcode → delivery → player.
@@ -71,6 +76,69 @@ export const bunnyProvider: VideoProvider = {
 
   publicUrl(path) {
     return `https://${cdnHost}/${path.replace(/^\/+/, '')}`
+  },
+
+  // --- Resumable upload ------------------------------------------------------
+
+  async createResumableUpload({ filename }): Promise<ResumableUploadPlan> {
+    const created = (await (
+      await bunnyFetch(`/library/${libraryId}/videos`, {
+        method: 'POST',
+        body: JSON.stringify({ title: filename }),
+      })
+    ).json()) as { guid: string }
+
+    // Bunny speaks TUS natively, which is what plan §5.1 actually asked for.
+    return {
+      protocol: 'tus',
+      endpoint: `${API}/tusupload`,
+      headers: {
+        AuthorizationSignature: '', // caller computes: sha256(libraryId + apiKey + expiry + videoId)
+        AuthorizationExpire: '',
+        VideoId: created.guid,
+        LibraryId: libraryId,
+      },
+      assetId: created.guid,
+    }
+  },
+
+  async signUploadPart() {
+    throw new Error(
+      'bunnyProvider.signUploadPart: TUS resumes client-side by asking the ' +
+        'upload URL its current offset. There are no server-signed parts.',
+    )
+  },
+
+  async listUploadedParts() {
+    throw new Error(
+      'bunnyProvider.listUploadedParts: TUS tracks offset via a HEAD on the ' +
+        'upload URL, not a server-side part list.',
+    )
+  },
+
+  async completeResumableUpload() {
+    // TUS finalises when the last chunk lands; nothing to do server-side.
+  },
+
+  async abortResumableUpload({ objectKey }) {
+    const guid = objectKey.replace(/^v\//, '').replace(/\/$/, '')
+    await bunnyFetch(`/library/${libraryId}/videos/${guid}`, { method: 'DELETE' })
+  },
+
+  // --- Worker-side transfer --------------------------------------------------
+
+  async downloadToFile() {
+    throw new Error(
+      'bunnyProvider.downloadToFile: Bunny transcodes server-side, so there is ' +
+        'no local transcode step and no source to fetch.',
+    )
+  },
+
+  async uploadDirectory() {
+    throw new Error(
+      'bunnyProvider.uploadDirectory: Bunny produces and hosts its own HLS ' +
+        'package. Nothing is uploaded to it.',
+    )
   },
 
   async putObject() {

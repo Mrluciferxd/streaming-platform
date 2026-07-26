@@ -3,8 +3,8 @@
 Ad-supported video streaming, India-first. Built against
 `streaming-platform-development-plan.md`.
 
-**Status:** Phase 1 (Foundation) — schema, storage adapter, playback-token
-design, deployable shell. No video pipeline yet.
+**Status:** Phase 2 (Video pipeline) — resumable upload, transcode worker, HLS
+packaging, sprites. No player or front-end yet.
 
 ---
 
@@ -19,8 +19,35 @@ npm run db:seed
 npm run dev
 ```
 
+In a second terminal, for transcoding:
+
+```bash
+npm run worker
+```
+
 Health check: `http://localhost:3000/api/health` — returns 503 if Postgres is
 unreachable, so an unhealthy instance leaves the load balancer rotation.
+
+### Checks
+
+```bash
+npm run check
+```
+
+Ladder selection, slug generation, and queue concurrency. The queue checks need
+a database and write to `jobs`, so point them at development.
+
+The transcode pipeline can be exercised end to end with no database and no cloud
+credentials — plan §15.3, prove the hardest component first:
+
+```bash
+npm run transcode:local -- "" ./out && npm run verify:hls -- ./out
+```
+
+With no input file it synthesises a test clip. `verify:hls` checks the things
+that are silent when broken: keyframe alignment across renditions, real bitrate
+against declared `BANDWIDTH`, audio stored once, segment durations, and
+decodability.
 
 ### Generating secrets
 
@@ -95,10 +122,17 @@ src/
       r2.ts             Cloudflare R2 implementation
       bunny.ts          Bunny Stream implementation
       token.ts          Playback token issue/verify
+      probe.ts          ffprobe wrapper
+      encode.ts         Ladder selection + FFmpeg args + master playlist
+      sprite.ts         Poster, sprite sheet, WebVTT, hover preview
+      pipeline.ts       Source file in, HLS package on disk out
       index.ts          Provider selection — the only public entry point
-drizzle/                Migrations (0000 generated, 0001 hand-written)
+    jobs/queue.ts       Postgres SKIP LOCKED queue
+    slug.ts             Indic-safe URL slugs
+worker/                 Transcode worker (separate process)
+drizzle/                Migrations (0000/0002 generated, 0001 hand-written)
 infra/cloudflare/       Edge Worker
-scripts/                Seed + interop check
+scripts/                Seed + checks
 ```
 
 ### Provider swap rule
@@ -142,6 +176,58 @@ double-count.
 
 ---
 
+## Video pipeline
+
+```
+POST /api/upload/create      → video row + multipart upload + signed part URLs
+POST /api/upload/:id         → presign a batch of parts
+GET  /api/upload/:id         → which parts landed (this is what makes resume work)
+POST /api/upload/:id/complete→ finalise + enqueue transcode  (one transaction)
+DELETE /api/upload/:id       → abort and release stored parts
+```
+
+Then the worker: download source → probe → ladder → HLS → poster, sprite,
+preview → upload package → write `video_variants` → status `ready`.
+
+`ready`, not `published`. Transcoding finishing is not a decision to make
+something public; publishing stays an operator action (plan §7).
+
+### Resumable upload
+
+Plan §5.1 specifies TUS. Bunny speaks it natively, R2 does not, so the R2 path
+uses S3 multipart — the client uploads parts directly to the bucket, and after a
+dropped connection asks `GET /api/upload/:id` which parts already landed and
+sends only the rest. R2 is the source of truth, not client-side state, so a
+resume survives a browser crash or a device change.
+
+Parts are 8 MB. That is chosen for the audience rather than for throughput: on a
+connection that drops every few minutes, a failed part costs at most 8 MB of
+re-upload. Bytes never transit the app server in either protocol.
+
+### Job queue
+
+Postgres `SELECT … FOR UPDATE SKIP LOCKED`, not the BullMQ/Redis pairing in plan
+§4. Transcoding is tens to hundreds of jobs a day, each running minutes — the
+opposite of the shape Redis is good at. Postgres buys three things instead:
+
+- No second stateful service. Redis is still worth adding for the hot-query
+  cache and rate limiting (plan §8); it just isn't needed to move jobs.
+- **Enqueue is transactional with the video row.** `POST /complete` marks the
+  upload done, moves the video to `processing`, and enqueues the job in one
+  transaction. With Redis there is a window where a video says `processing` with
+  no job, or a job runs against a video never marked complete.
+- Jobs survive a restart without an AOF/RDB durability conversation.
+
+Long jobs heartbeat every 30s; the reaper requeues anything stale for 120s. A
+plain lock timeout cannot tell a 20-minute encode from an OOM-killed worker.
+Files that will never decode are killed outright rather than burning three
+multi-minute retries.
+
+Workers are stateless — run as many as there are machines; they coordinate only
+through the table.
+
+---
+
 ## Encoding
 
 The ABR ladder lives in [`src/lib/video/types.ts`](src/lib/video/types.ts).
@@ -164,17 +250,44 @@ The ladder carries `peakBitrateKbps` per rendition for this reason, and
 
 Second correction: the reference command maps `a:0` three times, duplicating
 audio into every variant (~3× audio storage, and it blocks the multi-audio-track
-feature in v2). Use a separate audio rendition group.
+feature in v2). One shared audio rendition group instead — which also gives the
+audio-only rendition for very poor connections that plan §5.4 asks for, free.
+
+Third: keyframes are forced onto a fixed clock (`-force_key_frames`) with
+scene-cut detection off. Scene-cut keyframes land at different timestamps in
+each rendition, so switching stutters — and it plays fine in a casual test.
+`verify:hls` asserts boundary alignment for this reason.
 
 Segments are 6 seconds — fewer objects, fewer Class B reads (plan §0).
+
+### Ladder selection
+
+Rungs are matched against the source's **shorter** side, not its height. Height
+alone is right for landscape and wrong for portrait, which on a mobile-first
+Indian platform is a large share of uploads. A 480×854 phone video has a height
+of 854, so matching on height selects a "720p" rung and encodes 405×720 at
+2800 kbps — roughly three times the bitrate those pixels need, paid on every
+byte delivered. Short-side matching gives 480×854 labelled 480p at 1400 kbps:
+same pixel count, same bitrate, as a landscape 854×480.
 
 ---
 
 ## Not yet built
 
-Phase 2 onward: resumable upload (S3 multipart for R2, TUS for Bunny), the
-FFmpeg worker and job queue, HLS packaging, sprite generation, the player,
-search, auth, admin, and ad integration.
+Phase 3 onward: the player, homepage and browse, search, auth, admin panel, and
+ad integration.
 
-`scripts/check-token-interop.js` is currently the only automated check. A test
-runner should land before the video pipeline does.
+Known gaps in what exists:
+
+- **The R2 leg is unverified.** Everything up to and including HLS packaging is
+  tested locally, but `downloadToFile`/`uploadDirectory`/multipart have never run
+  against a real bucket. That needs credentials.
+- **Upload auth is a shared bearer token** (`UPLOAD_ADMIN_TOKEN`), not sessions.
+  It cannot be revoked per person and gives no attribution for
+  `videos.uploader_id`. Replace when Phase 3 auth lands —
+  `src/lib/auth/upload-guard.ts`.
+- **No abandoned-upload sweeper.** `uploads.expires_at` is set but nothing acts
+  on it, so a client that vanishes mid-upload leaves multipart parts billing as
+  storage until someone aborts them.
+- Checks are standalone scripts under `scripts/`. A real test runner should land
+  before the surface grows much further.

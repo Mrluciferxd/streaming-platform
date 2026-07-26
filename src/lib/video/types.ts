@@ -21,8 +21,34 @@ export type Rendition = {
   bitrateKbps: number
   /** Capped-VBR ceiling. Goes into the playlist's BANDWIDTH attribute. */
   peakBitrateKbps: number
-  audioKbps: number
+  /** H.264 profile. Older Android devices are safest on main below 480p. */
+  profile: 'main' | 'high'
+  /** H.264 level, as "3.0". Pairs with profile to form the CODECS attribute. */
+  level: string
 }
+
+/**
+ * One shared audio rendition, referenced by every video variant through an
+ * HLS audio group.
+ *
+ * Plan §5.3 gives each rung its own audio bitrate, which only makes sense when
+ * audio is muxed into every variant — as the plan's reference FFmpeg command
+ * does by mapping `a:0` three times. That triples audio storage and, worse,
+ * makes multi-audio-track support (a v2 feature) impossible to add later
+ * without re-encoding the entire library.
+ *
+ * A separate audio group stores audio once, and gives the audio-only rendition
+ * for very poor connections that plan §5.4 asks for at no extra cost.
+ */
+export const AUDIO = {
+  name: 'audio',
+  groupId: 'aud',
+  bitrateKbps: 128,
+  channels: 2,
+  sampleRate: 48000,
+  /** AAC-LC. */
+  codec: 'mp4a.40.2',
+} as const
 
 /**
  * The ABR ladder from plan §5.3, with peak bitrates added.
@@ -38,15 +64,41 @@ export type Rendition = {
  * cap. Never upscale — the pipeline filters this list against source height.
  */
 export const LADDER: readonly Rendition[] = [
-  { name: '240p', width: 426, height: 240, bitrateKbps: 400, peakBitrateKbps: 428, audioKbps: 64 },
-  { name: '360p', width: 640, height: 360, bitrateKbps: 800, peakBitrateKbps: 856, audioKbps: 96 },
-  { name: '480p', width: 854, height: 480, bitrateKbps: 1400, peakBitrateKbps: 1498, audioKbps: 128 },
-  { name: '720p', width: 1280, height: 720, bitrateKbps: 2800, peakBitrateKbps: 2996, audioKbps: 128 },
-  { name: '1080p', width: 1920, height: 1080, bitrateKbps: 5000, peakBitrateKbps: 5350, audioKbps: 192 },
+  { name: '240p', width: 426, height: 240, bitrateKbps: 400, peakBitrateKbps: 428, profile: 'main', level: '3.0' },
+  { name: '360p', width: 640, height: 360, bitrateKbps: 800, peakBitrateKbps: 856, profile: 'main', level: '3.0' },
+  { name: '480p', width: 854, height: 480, bitrateKbps: 1400, peakBitrateKbps: 1498, profile: 'high', level: '3.1' },
+  { name: '720p', width: 1280, height: 720, bitrateKbps: 2800, peakBitrateKbps: 2996, profile: 'high', level: '3.1' },
+  { name: '1080p', width: 1920, height: 1080, bitrateKbps: 5000, peakBitrateKbps: 5350, profile: 'high', level: '4.0' },
 ] as const
+
+/**
+ * CODECS attribute values, as profile_idc/constraints/level_idc hex.
+ * Getting these wrong makes Safari refuse a stream outright rather than
+ * degrade, so they are a lookup table instead of something computed.
+ */
+export const AVC_CODEC: Record<string, string> = {
+  'main@3.0': 'avc1.4d401e',
+  'main@3.1': 'avc1.4d401f',
+  'high@3.1': 'avc1.64001f',
+  'high@4.0': 'avc1.640028',
+  'high@4.1': 'avc1.640029',
+}
+
+export function avcCodecString(r: Rendition): string {
+  return AVC_CODEC[`${r.profile}@${r.level}`] ?? 'avc1.4d401e'
+}
 
 /** HLS segment duration. Longer segments = fewer R2 Class B reads (plan §0). */
 export const SEGMENT_SECONDS = 6
+
+/**
+ * Keyframe interval, in seconds.
+ *
+ * Every rendition must place keyframes at identical timestamps. If they drift,
+ * the player cannot switch variants at a segment boundary and quality changes
+ * stutter or stall. SEGMENT_SECONDS must be an exact multiple of this.
+ */
+export const KEYFRAME_SECONDS = 2
 
 export type UploadTicket = {
   /** Where the client PUTs/POSTs bytes. Never proxied through this app. */
@@ -56,6 +108,56 @@ export type UploadTicket = {
   /** Provider-side identifier to persist on the video row. */
   assetId: string
   expiresAt: Date
+}
+
+/**
+ * Resumable upload.
+ *
+ * Plan §5.1 specifies TUS, which Bunny speaks natively and R2 does not. Rather
+ * than pretend one protocol covers both, the provider returns a plan the client
+ * branches on. The property that actually matters — a creator on a dropping
+ * mobile connection never restarts a 2 GB upload from zero — holds either way.
+ */
+export type ResumableUploadPlan =
+  | {
+      protocol: 'multipart'
+      objectKey: string
+      multipartId: string
+      partSizeBytes: number
+      totalParts: number
+    }
+  | {
+      protocol: 'tus'
+      endpoint: string
+      headers: Record<string, string>
+      assetId: string
+    }
+
+export type UploadedPart = {
+  partNumber: number
+  etag: string
+  sizeBytes: number
+}
+
+/**
+ * S3 requires every part but the last to be identically sized, minimum 5 MB,
+ * maximum 10,000 parts.
+ *
+ * 8 MB is chosen for the audience rather than for throughput: on a connection
+ * that drops every few minutes, a failed part costs at most 8 MB of re-upload.
+ * Larger parts would finish faster on a good link and waste far more on a bad
+ * one, and bad links are the design target here.
+ */
+export const MIN_PART_SIZE = 8 * 1024 * 1024
+export const MAX_PARTS = 10_000
+
+export function planPartSize(totalBytes: number): { partSizeBytes: number; totalParts: number } {
+  const megabyte = 1024 * 1024
+  // Grow the part size only as far as needed to stay under the part limit.
+  const required = Math.ceil(totalBytes / MAX_PARTS)
+  const partSizeBytes = Math.max(MIN_PART_SIZE, Math.ceil(required / megabyte) * megabyte)
+
+  return { partSizeBytes, totalParts: Math.max(1, Math.ceil(totalBytes / partSizeBytes)) }
 }
 
 export type PlaybackSource = {
@@ -99,6 +201,49 @@ export interface VideoProvider {
 
   /** Absolute CDN URL for a non-video asset (poster, sprite, avatar). */
   publicUrl(path: string): string
+
+  // --- Resumable upload ----------------------------------------------------
+
+  createResumableUpload(input: {
+    videoId: string
+    filename: string
+    contentType: string
+    sizeBytes: number
+  }): Promise<ResumableUploadPlan>
+
+  /**
+   * Presigned URL for one part. Multipart providers only — TUS resumes by
+   * asking the upload URL how many bytes it already holds, with no server
+   * involvement.
+   */
+  signUploadPart(input: {
+    objectKey: string
+    multipartId: string
+    partNumber: number
+  }): Promise<string>
+
+  /** Which parts already landed. This is what makes a resume possible. */
+  listUploadedParts(input: { objectKey: string; multipartId: string }): Promise<UploadedPart[]>
+
+  completeResumableUpload(input: {
+    objectKey: string
+    multipartId: string
+    parts: UploadedPart[]
+  }): Promise<void>
+
+  abortResumableUpload(input: { objectKey: string; multipartId: string }): Promise<void>
+
+  // --- Worker-side transfer ------------------------------------------------
+
+  /** Stream an object to local disk for transcoding. */
+  downloadToFile(objectKey: string, localPath: string): Promise<void>
+
+  /** Upload a local directory tree under a key prefix. */
+  uploadDirectory(input: {
+    localDir: string
+    keyPrefix: string
+    onProgress?: (done: number, total: number) => void
+  }): Promise<number>
 
   /** Store a generated artifact: playlists, sprites, VTT. Small files only. */
   putObject(input: {
