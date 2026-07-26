@@ -56,6 +56,23 @@ export const videoStatus = pgEnum('video_status', [
  */
 export const ageRating = pgEnum('age_rating', ['U', 'UA7', 'UA13', 'UA16', 'A'])
 
+/**
+ * Where a series sits in its broadcast run.
+ *
+ * An enum rather than something derived from dates, because "currently airing"
+ * is the most-used view in an anime catalogue and a date comparison cannot tell
+ * a mid-cour break from a finished show. `hiatus` is separate from `completed`
+ * for exactly that reason — a paused series must drop out of the airing rail
+ * without being presented as finished.
+ */
+export const seriesStatus = pgEnum('series_status', [
+  'announced', // dated, nothing broadcast yet
+  'airing',
+  'hiatus',
+  'completed',
+  'cancelled',
+])
+
 export const commentStatus = pgEnum('comment_status', ['visible', 'pending', 'hidden', 'deleted'])
 export const reportStatus = pgEnum('report_status', ['open', 'reviewing', 'actioned', 'dismissed'])
 export const reactionType = pgEnum('reaction_type', ['like', 'dislike'])
@@ -198,17 +215,58 @@ export const tags = pgTable(
   (t) => [uniqueIndex('tags_slug_key').on(t.slug)],
 )
 
+/**
+ * A show, as opposed to a video file.
+ *
+ * Anime is episodic, so the series — not the episode — is the thing a viewer
+ * searches for, adds to a list, and tells a friend about. The catalogue-facing
+ * metadata therefore lives here rather than being repeated on all 24 videos of
+ * a cour, where it would drift the moment one row was edited.
+ */
 export const series = pgTable(
   'series',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     slug: varchar('slug', { length: 160 }).notNull(),
     title: varchar('title', { length: 200 }).notNull(),
-    description: text('description'),
+    synopsis: text('synopsis'),
+
+    /** 16:9 still, same artefact as `videos.poster_url`. */
     posterUrl: text('poster_url'),
+    /** Portrait key visual, 2:3 — the shape the catalogue grid renders. */
+    portraitUrl: text('portrait_url'),
+    /** Wide hero art for the series page header, roughly 16:5. */
+    bannerUrl: text('banner_url'),
+
+    status: seriesStatus('status').notNull().default('airing'),
+    /**
+     * Episodes in the announced run. Deliberately not a count of the `episodes`
+     * rows: while a series airs, "Ep 7 of 24" is the number a viewer wants, and
+     * the 24 is declared by the broadcaster months before it can be counted.
+     */
+    totalEpisodes: smallint('total_episodes'),
+    studio: varchar('studio', { length: 120 }),
+    releaseYear: smallint('release_year'),
+    /** Broadcast cour, e.g. "Fall 2026". Same vocabulary as videos.season_label. */
+    seasonLabel: varchar('season_label', { length: 24 }),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('series_slug_key').on(t.slug)],
+  (t) => [
+    uniqueIndex('series_slug_key').on(t.slug),
+    // "Airing now" is a homepage rail rendered on every visit, and a finished
+    // library dwarfs the airing one — so the index only carries airing rows.
+    index('series_airing_idx')
+      .on(t.updatedAt.desc())
+      .where(sql`${t.status} = 'airing'`),
+    index('series_season_idx').on(t.seasonLabel),
+    check('series_total_episodes_positive', sql`${t.totalEpisodes} is null or ${t.totalEpisodes} > 0`),
+    check(
+      'series_release_year_range',
+      sql`${t.releaseYear} is null or ${t.releaseYear} between 1900 and 2200`,
+    ),
+  ],
 )
 
 // ---------------------------------------------------------------------------
@@ -378,6 +436,14 @@ export const videoTags = pgTable(
   (t) => [primaryKey({ columns: [t.videoId, t.tagId] }), index('video_tags_tag_idx').on(t.tagId)],
 )
 
+/**
+ * Places a video in a series at a season/episode position.
+ *
+ * A join row rather than columns on `videos` because everything else about a
+ * video — transcoding, playback, moderation, revenue — is identical whether it
+ * is episode 3 of a cour or a standalone film, and nullable series columns on
+ * the hot table would be null for most rows.
+ */
 export const episodes = pgTable(
   'episodes',
   {
@@ -390,10 +456,29 @@ export const episodes = pgTable(
       .references(() => videos.id, { onDelete: 'cascade' }),
     seasonNo: smallint('season_no').notNull().default(1),
     episodeNo: smallint('episode_no').notNull(),
+
+    /**
+     * The bare episode title — "The Rooftop That Wasn't There".
+     *
+     * `videos.title` carries the series name and number too, because that is the
+     * string search, sitemaps and Google match against. Reusing it in the
+     * episode list would start all 24 rows with the same words.
+     */
+    title: varchar('title', { length: 200 }),
+    synopsis: text('synopsis'),
+    /** 16:9 still. Bucket-relative; falls back to the video's poster. */
+    thumbnailUrl: text('thumbnail_url'),
+    /** Broadcast date. Null until it airs, which is how a schedule renders. */
+    airedAt: timestamp('aired_at', { withTimezone: true }),
   },
   (t) => [
+    // Also the ordering index: the series page and the next/previous lookup
+    // both walk this in (season, episode) order.
     uniqueIndex('episodes_series_season_ep_key').on(t.seriesId, t.seasonNo, t.episodeNo),
+    // One video belongs to at most one series, which is what lets the watch page
+    // resolve its episode context from a video id in a single index hit.
     uniqueIndex('episodes_video_key').on(t.videoId),
+    check('episodes_episode_no_positive', sql`${t.episodeNo} > 0`),
   ],
 )
 

@@ -3,8 +3,9 @@
 Ad-supported video streaming, India-first. Built against
 `streaming-platform-development-plan.md`.
 
-**Status:** Phase 2 (Video pipeline) — resumable upload, transcode worker, HLS
-packaging, sprites. No player or front-end yet.
+**Status:** Catalogue, player, accounts and playback analytics are live at
+[streaming-platform-red.vercel.app](https://streaming-platform-red.vercel.app);
+the video pipeline runs from resumable upload through HLS packaging and sprites.
 
 ---
 
@@ -31,11 +32,56 @@ unreachable, so an unhealthy instance leaves the load balancer rotation.
 ### Checks
 
 ```bash
-npm run check
+npm test
 ```
 
-Ladder selection, slug generation, and queue concurrency. The queue checks need
-a database and write to `jobs`, so point them at development.
+Node's built-in test runner (`node:test`) over everything in `scripts/check-*`.
+No test framework is installed and none is needed — the runner, the assertions
+and the reporter all ship with Node.
+
+Each file is also runnable on its own, which is how you get a useful signal
+while working on one thing:
+
+```bash
+npm run check:ladder        # ladder selection        — no dependencies
+npm run check:slug          # slug generation         — no dependencies
+npm run check:queue         # queue concurrency       — writes to `jobs`
+npm run check:rate-limit    # limiter arithmetic      — writes to `rate_limits`
+npm run check:sweep         # abandoned-upload sweep  — writes to `uploads`
+npm run check:analytics     # ingest → rollup         — database + running server
+npm run check:token         # app ↔ edge Worker       — running server
+npm run check:r2            # storage provider        — real R2 credentials
+```
+
+The ones with dependencies **skip, with the reason printed**, when the thing
+they need is absent — a missing database or an unprovisioned bucket should not
+look like a failure. What must never happen is a skip going unnoticed on a
+machine that could have run it, so CI should set `CHECK_STRICT=1`, which turns
+every unmet precondition into a failure.
+
+The database-backed checks write and delete their own rows; point them at
+development.
+
+`check:r2` is the one to run first after provisioning the bucket. It exercises
+the whole `VideoProvider` contract against real credentials — multipart
+create/sign/upload/list/complete, download, directory upload, public URL,
+abort, prefix delete — writing about 8 MB and removing it again.
+
+### Smoke test
+
+```bash
+npm run smoke -- https://streaming-platform-red.vercel.app
+```
+
+Black-box, against a running deployment: public pages, sitemap and robots,
+legal pages, health, the playback endpoint and its cookie, register → list →
+resume position → sign out → sign back in, telemetry validation, and the
+refusals on the cron, upload and admin endpoints. Exits non-zero on any failure,
+so it can gate a deploy.
+
+It registers an account and writes playback events against the deployment's
+database. Both are cleaned up when `DATABASE_URL` is set locally, and named in
+the output when it is not.
 
 The transcode pipeline can be exercised end to end with no database and no cloud
 credentials — plan §15.3, prove the hardest component first:
@@ -114,9 +160,11 @@ src/
   db/
     schema.ts           Everything drizzle-kit manages
     schema-analytics.ts Partitioned event tables (query typing only)
+    schema-ops.ts       Rate-limit counters (query typing only)
     index.ts            Pooled client + drizzle instance
   lib/
     env.ts              Zod-validated environment, fails at boot
+    rate-limit.ts       Fixed-window counters in Postgres
     video/
       types.ts          VideoProvider interface + ABR ladder
       r2.ts             Cloudflare R2 implementation
@@ -130,9 +178,9 @@ src/
     jobs/queue.ts       Postgres SKIP LOCKED queue
     slug.ts             Indic-safe URL slugs
 worker/                 Transcode worker (separate process)
-drizzle/                Migrations (0000/0002 generated, 0001 hand-written)
+drizzle/                Migrations (0001 and 0005 hand-written, rest generated)
 infra/cloudflare/       Edge Worker
-scripts/                Seed + checks
+scripts/                Seed, checks (node:test), smoke test
 ```
 
 ### Provider swap rule
@@ -162,8 +210,9 @@ forcing a cutover.
 | `videos.search_vector` generated + GIN | Postgres FTS until Meilisearch earns its keep. `simple` config, not `english` — there is no Hindi/Gujarati stemmer and English stemming makes transliterated titles worse. |
 | `reports.due_at` | IT Rules gives the Grievance Officer 15 days; the overdue queue should be an index scan, not something to remember. |
 | Soft deletes on `users`, `videos` | DPDP erasure without breaking referential integrity. |
+| `rate_limits` | Plan §8 puts rate limiting in Redis, which is not provisioned. A per-instance limiter on serverless is decorative — see below. |
 
-Partition maintenance — wire to a monthly cron:
+Partition maintenance runs from `/api/cron/rollup`; the equivalent by hand is:
 
 ```sql
 SELECT ensure_video_events_partition((now() + interval '2 months')::date);
@@ -173,6 +222,66 @@ SELECT rollup_video_stats(current_date - 1);   -- nightly; idempotent
 
 `rollup_video_stats` recomputes rather than accumulates, so a retried job cannot
 double-count.
+
+---
+
+## Scheduled jobs
+
+All three are declared in `vercel.json` and gated on `Authorization: Bearer
+$CRON_SECRET`, compared in constant time — `src/app/api/cron/auth.ts` for the
+two under `/api/cron`. Without that check they are public triggers for a minute
+of database work each.
+
+| Endpoint | Schedule | Does |
+|---|---|---|
+| `/api/cron/rollup` | daily | Rolls yesterday's events into `video_stats_daily`, syncs `videos.view_count`, creates next month's partition, drops partitions past 35 days. |
+| `/api/cron/sweep` | daily | Aborts expired multipart uploads, purges expired sessions and spent rate-limit counters, requeues jobs whose worker died, drops finished job history. |
+| `/api/admin/publish-due` | every 10 min | Flips scheduled titles live once `published_at` passes. Without it, scheduling a release silently does nothing. |
+
+`publish-due` also accepts an operator session, so a scheduled release can be
+forced by hand; the other two are cron-only.
+
+**This configuration needs a Vercel Pro plan.** Hobby allows two cron jobs and
+triggers them at most once a day, so three entries — one of them every ten
+minutes — will not run there as written. On Hobby, drop `publish-due` to daily
+and accept that a scheduled release lands up to a day late, or publish by hand.
+
+The sweep is daily for the same reason. `uploads.expires_at` is 24 hours, so an
+abandoned upload's parts live at most another day beyond that; hourly is the
+right cadence once the plan allows it.
+
+The sweep is the one that costs money if it is not running. An S3 multipart
+upload whose client vanished keeps its uploaded parts, those parts bill as
+storage, and **they do not appear in a bucket listing** — so the bill grows and
+nothing in the console explains why. Only an abort releases them.
+
+Every step of the sweep is independent and reports its own error, so a storage
+outage cannot stop sessions being purged; the run returns HTTP 500 if any step
+failed, so a monitored cron actually surfaces it.
+
+## Rate limiting
+
+`/api/events`, `/api/auth/login` and `/api/auth/register` are limited per IP by
+a fixed-window counter in Postgres (`src/lib/rate-limit.ts`).
+
+Plan §8 pairs this with Redis and Redis is the right answer eventually. What it
+is not is a reason to ship the usual stopgap: a counter in module scope gives
+every warm serverless instance its own budget, so the effective limit is
+whatever was configured multiplied by however many instances are alive, and it
+resets on each cold start. The cost of doing it in Postgres is one upsert per
+request, which is affordable only because each of these endpoints already writes
+to Postgres on the same request.
+
+Two consequences worth knowing before tuning the numbers:
+
+- **The budgets are loose on purpose.** Indian mobile carriers put very large
+  numbers of subscribers behind one CGNAT address, so an IP here is closer to a
+  neighbourhood than a person. These limits bound the damage a single abusive
+  client can do; they do not meter fairly.
+- **The limiter fails open.** If the counter is unavailable the database is
+  unavailable, and every endpoint it protects is about to fail on its own
+  anyway. A limiter that turns a database blip into a total login outage is a
+  worse incident than one that is briefly absent.
 
 ---
 
@@ -274,20 +383,18 @@ same pixel count, same bitrate, as a landscape 854×480.
 
 ## Not yet built
 
-Phase 3 onward: the player, homepage and browse, search, auth, admin panel, and
-ad integration.
-
 Known gaps in what exists:
 
-- **The R2 leg is unverified.** Everything up to and including HLS packaging is
-  tested locally, but `downloadToFile`/`uploadDirectory`/multipart have never run
-  against a real bucket. That needs credentials.
-- **Upload auth is a shared bearer token** (`UPLOAD_ADMIN_TOKEN`), not sessions.
-  It cannot be revoked per person and gives no attribution for
-  `videos.uploader_id`. Replace when Phase 3 auth lands —
-  `src/lib/auth/upload-guard.ts`.
-- **No abandoned-upload sweeper.** `uploads.expires_at` is set but nothing acts
-  on it, so a client that vanishes mid-upload leaves multipart parts billing as
-  storage until someone aborts them.
-- Checks are standalone scripts under `scripts/`. A real test runner should land
-  before the surface grows much further.
+- **The R2 leg has still never run against a real bucket.** The code is
+  complete and there is now a check that exercises the entire provider
+  contract against real credentials — `npm run check:r2` — but nobody has
+  provisioned a bucket, so the storage path remains verified by typechecking
+  and nothing else. This is the first thing to run when that changes.
+- **Rate limiting is per-IP and fixed-window.** Enough to bound a flood, not
+  enough to be fair behind CGNAT, and a caller straddling a window boundary
+  gets twice the budget briefly. Redis and a sliding window when plan §8's
+  cache work happens.
+- **No email verification.** `users.email_verified` never becomes true; it
+  needs a transactional mail provider.
+- **The sweeper runs daily, not hourly** — a cron-plan limit, not a design
+  choice. See Scheduled jobs.

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, eventTypes, videoEvents } from '@/db'
+import { clientIdentity, rateLimit, RULES, tooManyRequests } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,10 +22,11 @@ export const dynamic = 'force-dynamic'
  *     client sending an event this deployment does not know about should lose
  *     that one event, not have its whole batch rejected.
  *
- * Rate limiting is NOT here yet. It needs a shared counter, which means Redis
- * (plan §4/§8) — a per-instance limiter is decorative on serverless. Until then
- * the caps below are the only thing bounding a determined caller, and invalid
- * traffic is exactly what gets an ad account banned (plan §9).
+ * Rate limited per IP against a shared counter in Postgres — see
+ * src/lib/rate-limit.ts for why that rather than the Redis in plan §4/§8, and
+ * why the budget is loose. The caps above bound one request; the limiter bounds
+ * how many requests, and invalid traffic is exactly what gets an ad account
+ * banned (plan §9).
  */
 
 const MAX_EVENTS_PER_REQUEST = 50
@@ -47,6 +49,11 @@ const bodySchema = z.object({
 const knownEventTypes = new Set<string>(eventTypes)
 
 export async function POST(request: Request) {
+  // Before reading the body: a flood should cost this endpoint one upsert, not
+  // a parse of whatever the caller decided to send.
+  const limit = await rateLimit(RULES.events, clientIdentity(request))
+  if (!limit.ok) return tooManyRequests(limit)
+
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return Response.json({ error: 'invalid_request' }, { status: 400 })

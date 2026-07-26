@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/rollup",
       "schedule": "20 19 * * *"
+    },
+    {
+      "path": "/api/cron/sweep",
+      "schedule": "40 2 * * *"
+    },
+    {
+      "path": "/api/admin/publish-due",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

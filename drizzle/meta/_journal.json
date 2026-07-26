@@ -36,6 +36,20 @@
       "when": 1785074404357,
       "tag": "0004_anime_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785088050075,
+      "tag": "0005_rate_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785088197869,
+      "tag": "0006_series_episodes",
+      "breakpoints": true
     }
   ]
 }

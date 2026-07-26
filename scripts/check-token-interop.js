@@ -6,45 +6,66 @@
  * files that can drift independently, and a drift is not subtle in production:
  * every segment request 403s and nothing plays anywhere.
  *
- * Run against a live dev server:
- *   node scripts/check-token-interop.js http://localhost:3000
+ * Run against a live server:
+ *   npm run check:token
+ *   npm run check:token -- https://host
+ *
+ * Deliberately plain JavaScript with no local imports beyond the Worker itself,
+ * so it runs under bare `node` with no loader — the same way the Workers
+ * runtime will see that file.
  */
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
 import { verifyPlaybackToken } from '../infra/cloudflare/playback-gate.worker.js'
 
-const base = process.argv[2] ?? 'http://localhost:3000'
+const base = (
+  process.env.CHECK_BASE_URL ??
+  process.argv.slice(2).find((arg) => /^https?:\/\//.test(arg)) ??
+  'http://localhost:3000'
+).replace(/\/+$/, '')
+
 const secret = process.env.PLAYBACK_TOKEN_SECRET
 
-if (!secret) {
-  console.error('PLAYBACK_TOKEN_SECRET must be set, and must match the app’s.')
-  process.exit(1)
+/** A precondition is a reason to skip; CHECK_STRICT=1 makes it a failure. */
+function unmet(reason) {
+  if (!reason) return false
+  if (process.env.CHECK_STRICT === '1') throw new Error(`precondition not met: ${reason}`)
+  return reason
 }
 
-const res = await fetch(`${base}/api/tokencheck`)
-if (!res.ok) {
-  console.error(`Could not reach ${base}/api/tokencheck (HTTP ${res.status})`)
-  process.exit(1)
+let token
+let reason = secret ? null : 'PLAYBACK_TOKEN_SECRET is not set (and must match the app’s)'
+
+if (!reason) {
+  const res = await fetch(`${base}/api/tokencheck`).catch(() => null)
+  if (!res?.ok) reason = `could not reach ${base}/api/tokencheck (${res?.status ?? 'no response'})`
+  else ({ token } = await res.json())
 }
 
-const { token } = await res.json()
+describe('playback token interop', { skip: unmet(reason) }, () => {
+  it('accepts an app-issued token', async () => {
+    assert.equal(await verifyPlaybackToken(token, secret), true)
+  })
 
-const cases = [
-  ['app-issued token accepted by worker', await verifyPlaybackToken(token, secret), true],
-  [
-    'tampered signature rejected',
-    await verifyPlaybackToken(token.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')), secret),
-    false,
-  ],
-  ['wrong secret rejected', await verifyPlaybackToken(token, secret + 'x'), false],
-  ['expired token rejected', await verifyPlaybackToken('v1.abc.1000000000.aGVsbG8', secret), false],
-  ['malformed token rejected', await verifyPlaybackToken('garbage', secret), false],
-  ['missing token rejected', await verifyPlaybackToken(null, secret), false],
-]
+  it('rejects a tampered signature', async () => {
+    const tampered = token.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'))
+    assert.equal(await verifyPlaybackToken(tampered, secret), false)
+  })
 
-let failed = 0
-for (const [name, actual, expected] of cases) {
-  const ok = actual === expected
-  if (!ok) failed++
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`)
-}
+  it('rejects the wrong secret', async () => {
+    assert.equal(await verifyPlaybackToken(token, secret + 'x'), false)
+  })
 
-process.exit(failed === 0 ? 0 : 1)
+  it('rejects an expired token', async () => {
+    assert.equal(await verifyPlaybackToken('v1.abc.1000000000.aGVsbG8', secret), false)
+  })
+
+  it('rejects a malformed token', async () => {
+    assert.equal(await verifyPlaybackToken('garbage', secret), false)
+  })
+
+  it('rejects a missing token', async () => {
+    assert.equal(await verifyPlaybackToken(null, secret), false)
+  })
+})

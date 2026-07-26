@@ -86,11 +86,43 @@ export async function POST(request: Request) {
   if (!parsed.success) return Response.json({ error: 'invalid_request' }, { status: 400 })
 
   const { videoId, positionSec, durationSec } = parsed.data
-  const completed = positionSec / durationSec >= COMPLETE_FRACTION
+
+  /**
+   * The catalogue duration wins over whatever the client reported.
+   *
+   * GET computes `progress` from `videos.duration_sec` while this handler was
+   * deciding `completed` from the client's number. Those disagreeing is not
+   * hypothetical — a client that reports a short duration marks the row
+   * complete at a position that is nowhere near the end, and one that reports a
+   * long duration leaves a card pinned at 100% in Continue Watching that can
+   * never be dismissed, because the position needed to clear it does not exist.
+   *
+   * Deriving both from the same authority removes the disagreement. The
+   * client's value is only a fallback for rows whose duration was never
+   * recorded (a video still transcoding), and the position is clamped so a
+   * malformed client cannot park a row past its own runtime.
+   */
+  const [video] = await db
+    .select({ durationSec: videos.durationSec })
+    .from(videos)
+    .where(eq(videos.id, videoId))
+    .limit(1)
+
+  if (!video) return new Response(null, { status: 204 })
+
+  const authoritativeDuration = video.durationSec ?? durationSec
+  const clampedPosition = Math.min(positionSec, authoritativeDuration)
+  const completed = clampedPosition / authoritativeDuration >= COMPLETE_FRACTION
 
   await db
     .insert(watchHistory)
-    .values({ userId: user.id, videoId, positionSec, completed, watchedAt: new Date() })
+    .values({
+      userId: user.id,
+      videoId,
+      positionSec: clampedPosition,
+      completed,
+      watchedAt: new Date(),
+    })
     .onConflictDoUpdate({
       target: [watchHistory.userId, watchHistory.videoId],
       set: {

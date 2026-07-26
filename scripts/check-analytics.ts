@@ -2,7 +2,8 @@
  * Verifies the telemetry path: ingest → video_events → rollup →
  * video_stats_daily → videos.view_count.
  *
- *   npm run check:analytics   (against a running dev server)
+ *   npm run check:analytics                       (against a running dev server)
+ *   npm run check:analytics -- https://host       (or a deployment)
  *
  * This path was dead for three phases — the rollup functions and the
  * partitioned table existed, but nothing ever wrote an event, so the trending
@@ -10,45 +11,42 @@
  * seed had put there. A broken analytics pipeline does not throw; it just
  * quietly reports zeros, which is why it needs a test.
  */
+import assert from 'node:assert/strict'
+import { after, describe, it } from 'node:test'
+
 import { and, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
 import { videos } from '../src/db/schema.ts'
 import { videoStatsDaily } from '../src/db/schema-analytics.ts'
+import { baseUrl, serverIsUp, unmet } from './support.ts'
 
-const base = process.argv[2] ?? 'http://localhost:3000'
-const url = process.env.DATABASE_URL
-if (!url) {
-  console.error('DATABASE_URL is not set.')
-  process.exit(1)
-}
+const base = baseUrl()
+const databaseUrl = process.env.DATABASE_URL
 
-const client = postgres(url, { max: 1 })
+// Preconditions are resolved before the suite is registered, because the last
+// of them needs a query to answer.
+let reason: string | null = databaseUrl ? null : 'DATABASE_URL is not set'
+if (!reason && !(await serverIsUp(base))) reason = `no server answering at ${base}`
+
+const client = postgres(databaseUrl ?? '', { max: 1 })
 const db = drizzle(client)
 
-let failures = 0
-function check(ok: boolean, label: string, detail = '') {
-  if (!ok) failures++
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  — ${detail}` : ''}`)
-}
+const [video] = reason
+  ? []
+  : await db
+      .select({ id: videos.id, slug: videos.slug })
+      .from(videos)
+      .where(eq(videos.status, 'published'))
+      .limit(1)
 
-const [video] = await db
-  .select({ id: videos.id, slug: videos.slug })
-  .from(videos)
-  .where(eq(videos.status, 'published'))
-  .limit(1)
-
-if (!video) {
-  console.error('No published video to test against. Run: npm run seed:video')
-  await client.end()
-  process.exit(1)
-}
+if (!reason && !video) reason = 'no published video to test against — run: npm run seed:video'
+if (reason) await client.end()
 
 const sessionId = crypto.randomUUID()
 const today = new Date().toISOString().slice(0, 10)
 
-// --- Ingest -----------------------------------------------------------------
 const send = (events: unknown[]) =>
   fetch(`${base}/api/events`, {
     method: 'POST',
@@ -56,83 +54,110 @@ const send = (events: unknown[]) =>
     body: JSON.stringify({ events }),
   })
 
-const ok = await send([
-  { videoId: video.id, sessionId, eventType: 'play', positionSec: 0 },
-  { videoId: video.id, sessionId, eventType: 'progress', positionSec: 15, watchedSec: 15 },
-  { videoId: video.id, sessionId, eventType: 'progress', positionSec: 30, watchedSec: 15 },
-  { videoId: video.id, sessionId, eventType: 'rebuffer', positionSec: 31 },
-  { videoId: video.id, sessionId, eventType: 'complete', positionSec: 40, watchedSec: 10 },
-])
-check(ok.status === 204, 'valid batch accepted', `http ${ok.status}`)
+describe('analytics pipeline', { skip: unmet(reason) }, () => {
+  after(async () => {
+    await db.execute(sql`DELETE FROM video_events WHERE session_id = ${sessionId}::uuid`)
+    // Recompute the day without this run's events, so the check leaves the
+    // rollup exactly as it found it.
+    await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
+    await client.end()
+  })
 
-// --- Validation -------------------------------------------------------------
-const bad = await send([{ videoId: 'not-a-uuid', sessionId, eventType: 'play' }])
-check(bad.status === 400, 'malformed batch rejected', `http ${bad.status}`)
+  // --- Ingest ---------------------------------------------------------------
+  it('accepts a valid batch', async () => {
+    const res = await send([
+      { videoId: video!.id, sessionId, eventType: 'play', positionSec: 0 },
+      { videoId: video!.id, sessionId, eventType: 'progress', positionSec: 15, watchedSec: 15 },
+      { videoId: video!.id, sessionId, eventType: 'progress', positionSec: 30, watchedSec: 15 },
+      { videoId: video!.id, sessionId, eventType: 'rebuffer', positionSec: 31 },
+      { videoId: video!.id, sessionId, eventType: 'complete', positionSec: 40, watchedSec: 10 },
+    ])
+    assert.equal(res.status, 204)
+  })
 
-const ghost = await send([
-  { videoId: '00000000-0000-4000-8000-000000000000', sessionId, eventType: 'play' },
-])
-check(ghost.status === 204, 'events for unknown videos are dropped, not stored', `http ${ghost.status}`)
+  // --- Validation -----------------------------------------------------------
+  it('rejects a malformed batch', async () => {
+    const res = await send([{ videoId: 'not-a-uuid', sessionId, eventType: 'play' }])
+    assert.equal(res.status, 400)
+  })
 
-const unknown = await send([{ videoId: video.id, sessionId, eventType: 'teleport' }])
-check(unknown.status === 204, 'unknown event type dropped without failing the batch', `http ${unknown.status}`)
+  it('drops events for unknown videos rather than storing them', async () => {
+    const res = await send([
+      { videoId: '00000000-0000-4000-8000-000000000000', sessionId, eventType: 'play' },
+    ])
+    assert.equal(res.status, 204)
+  })
 
-const huge = await send(
-  Array.from({ length: 80 }, () => ({ videoId: video.id, sessionId, eventType: 'progress' })),
-)
-check(huge.status === 400, 'oversized batch rejected', `http ${huge.status}`)
+  it('drops an unknown event type without failing the batch', async () => {
+    const res = await send([{ videoId: video!.id, sessionId, eventType: 'teleport' }])
+    assert.equal(res.status, 204)
+  })
 
-const inflated = await send([
-  { videoId: video.id, sessionId, eventType: 'progress', watchedSec: 99999 },
-])
-check(inflated.status === 400, 'implausible watch time rejected', `http ${inflated.status}`)
+  it('rejects an oversized batch', async () => {
+    const res = await send(
+      Array.from({ length: 80 }, () => ({ videoId: video!.id, sessionId, eventType: 'progress' })),
+    )
+    assert.equal(res.status, 400)
+  })
 
-// --- Stored -----------------------------------------------------------------
-const [stored] = await db.execute<{ c: number; watched: number }>(sql`
-  SELECT count(*)::int AS c, coalesce(sum(watched_sec), 0)::int AS watched
-    FROM video_events WHERE session_id = ${sessionId}::uuid
-`)
-check(stored?.c === 5, 'exactly the five valid events landed', `${stored?.c} rows`)
-check(stored?.watched === 40, 'watch seconds summed correctly', `${stored?.watched}s`)
+  it('rejects implausible watch time', async () => {
+    const res = await send([{ videoId: video!.id, sessionId, eventType: 'progress', watchedSec: 99999 }])
+    assert.equal(res.status, 400)
+  })
 
-// --- Rollup -----------------------------------------------------------------
-await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
+  // --- Stored ---------------------------------------------------------------
+  it('stores exactly the five valid events', async () => {
+    const [stored] = await db.execute<{ c: number; watched: number }>(sql`
+      SELECT count(*)::int AS c, coalesce(sum(watched_sec), 0)::int AS watched
+        FROM video_events WHERE session_id = ${sessionId}::uuid
+    `)
 
-const [stats] = await db
-  .select()
-  .from(videoStatsDaily)
-  .where(and(eq(videoStatsDaily.videoId, video.id), eq(videoStatsDaily.day, today)))
+    assert.equal(stored?.c, 5)
+    assert.equal(stored?.watched, 40, 'watch seconds summed correctly')
+  })
 
-check(Boolean(stats), 'rollup produced a daily row')
-check((stats?.views ?? 0) >= 1, 'play counted as a view', `views=${stats?.views}`)
-check((stats?.watchSeconds ?? 0) >= 40, 'watch seconds rolled up', `${stats?.watchSeconds}s`)
-check((stats?.completions ?? 0) >= 1, 'completion counted', `${stats?.completions}`)
-check((stats?.rebufferEvents ?? 0) >= 1, 'rebuffer counted — this is the QoE signal plan §8 targets')
+  // --- Rollup ---------------------------------------------------------------
+  it('rolls the day up into video_stats_daily', async () => {
+    await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
 
-// Re-running must not double-count; the job is retried on failure.
-const before = stats?.views ?? 0
-await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
-const [again] = await db
-  .select()
-  .from(videoStatsDaily)
-  .where(and(eq(videoStatsDaily.videoId, video.id), eq(videoStatsDaily.day, today)))
-check(again?.views === before, 'rollup is idempotent', `${before} → ${again?.views}`)
+    const [stats] = await db
+      .select()
+      .from(videoStatsDaily)
+      .where(and(eq(videoStatsDaily.videoId, video!.id), eq(videoStatsDaily.day, today)))
 
-// --- view_count sync --------------------------------------------------------
-const [refreshed] = await db
-  .select({ viewCount: videos.viewCount })
-  .from(videos)
-  .where(eq(videos.id, video.id))
-check(
-  (refreshed?.viewCount ?? 0) >= 1,
-  'videos.view_count synced from the rollup, not written on the play path',
-  `${refreshed?.viewCount}`,
-)
+    assert.ok(stats, 'rollup produced a daily row')
+    assert.ok((stats?.views ?? 0) >= 1, `play counted as a view — views=${stats?.views}`)
+    assert.ok((stats?.watchSeconds ?? 0) >= 40, `watch seconds rolled up — ${stats?.watchSeconds}s`)
+    assert.ok((stats?.completions ?? 0) >= 1, `completion counted — ${stats?.completions}`)
+    assert.ok(
+      (stats?.rebufferEvents ?? 0) >= 1,
+      'rebuffer counted — this is the QoE signal plan §8 targets',
+    )
+  })
 
-// --- Cleanup ----------------------------------------------------------------
-await db.execute(sql`DELETE FROM video_events WHERE session_id = ${sessionId}::uuid`)
-await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
+  it('is idempotent — a retried rollup does not double-count', async () => {
+    const [before] = await db
+      .select()
+      .from(videoStatsDaily)
+      .where(and(eq(videoStatsDaily.videoId, video!.id), eq(videoStatsDaily.day, today)))
 
-await client.end()
-console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}`)
-process.exit(failures === 0 ? 0 : 1)
+    await db.execute(sql`SELECT rollup_video_stats(${today}::date)`)
+
+    const [again] = await db
+      .select()
+      .from(videoStatsDaily)
+      .where(and(eq(videoStatsDaily.videoId, video!.id), eq(videoStatsDaily.day, today)))
+
+    assert.equal(again?.views, before?.views)
+  })
+
+  // --- view_count sync ------------------------------------------------------
+  it('syncs videos.view_count from the rollup, not from the play path', async () => {
+    const [refreshed] = await db
+      .select({ viewCount: videos.viewCount })
+      .from(videos)
+      .where(eq(videos.id, video!.id))
+
+    assert.ok((refreshed?.viewCount ?? 0) >= 1, `${refreshed?.viewCount}`)
+  })
+})

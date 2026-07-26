@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db, users } from '@/db'
 import { fakeVerify, verifyPassword } from '@/lib/auth/password'
 import { clientIp, createSession } from '@/lib/auth/session'
+import { clientIdentity, rateLimit, RULES, tooManyRequests } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,14 @@ const bodySchema = z.object({
 })
 
 export async function POST(request: Request) {
+  /**
+   * Counted before the password is looked at, so a stuffing run pays the limit
+   * whether or not it guesses a valid address. Counting only failures would let
+   * an attacker with one working credential keep their budget topped up.
+   */
+  const limit = await rateLimit(RULES.login, clientIdentity(request))
+  if (!limit.ok) return tooManyRequests(limit)
+
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return Response.json({ error: 'invalid_credentials' }, { status: 401 })

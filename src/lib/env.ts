@@ -61,13 +61,6 @@ const serverSchema = z.object({
   AUTH_SECRET: z.string().min(32),
 
   /**
-   * Interim shared secret for the upload endpoints, which hand out presigned
-   * write URLs for the media bucket. Removed once Phase 3 auth lands — see
-   * src/lib/auth/upload-guard.ts.
-   */
-  UPLOAD_ADMIN_TOKEN: z.string().min(32),
-
-  /**
    * Shared secret for the cron endpoints. Vercel Cron sends it as a bearer
    * token; without it /api/cron/* is a public trigger for minutes of database
    * work.
@@ -81,6 +74,47 @@ const serverSchema = z.object({
   WORKER_TMP_DIR: z.string().default('/tmp/transcode'),
   /** Concurrent transcodes per worker process. One per ~8 vCPU (plan §5). */
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
+
+  /**
+   * --- Advertising (plan §9) ---
+   *
+   * All optional, and everything is off unless switched on. An unconfigured
+   * deploy loads no ad script and requests no ad; nothing here can affect
+   * playback.
+   *
+   * The NEXT_PUBLIC_* entries are validated here so a malformed value fails at
+   * boot on the server, but the browser cannot read this module — it throws
+   * without the server secrets above. src/lib/ads/config.ts is the client-side
+   * mirror, and Next only inlines these into the bundle when the property
+   * access is written out literally, so the two cannot share a read.
+   */
+  NEXT_PUBLIC_ADS_ENABLED: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((v) => v === '1'),
+  /** Google Ad Manager network code. Display slots build ad unit paths from it. */
+  NEXT_PUBLIC_GAM_NETWORK_CODE: z.string().regex(/^\d+$/).optional(),
+  /** VAST 4.x / VMAP ad tag for the pre-roll. GAM, AdSense for Video, or a test tag. */
+  NEXT_PUBLIC_AD_VAST_TAG_URL: z.string().url().optional(),
+  /** Pre-rolls per browsing session — `ad_placements.frequency_cap`. */
+  NEXT_PUBLIC_AD_PREROLL_CAP: z.coerce.number().int().positive().default(3),
+  /** Minimum gap between pre-rolls. This is what stops one per episode. */
+  NEXT_PUBLIC_AD_PREROLL_COOLDOWN_SEC: z.coerce.number().int().positive().default(600),
+
+  /** Seller of record in ads.txt, e.g. pub-0000000000000000. */
+  ADS_TXT_GOOGLE_PUB_ID: z
+    .string()
+    .regex(/^pub-\d{16}$/, 'expected a Google publisher id like pub-0000000000000000')
+    .optional(),
+  /** Additional ads.txt records, separated by newlines or semicolons. */
+  ADS_TXT_ENTRIES: z.string().optional(),
+  /** Published as the CONTACT= line. Email or URL. */
+  ADS_TXT_CONTACT: z.string().optional(),
+  /** Serve /app-ads.txt. Only meaningful once a mobile app exists. */
+  ADS_TXT_APP_ADS: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((v) => v === '1'),
 })
 
 const parsed = serverSchema.safeParse(process.env)

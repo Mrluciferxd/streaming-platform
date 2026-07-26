@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { AdController } from './AdController'
 import { formatTime } from './formatTime'
 import { SeekBar } from './SeekBar'
 import { useHlsPlayer } from './useHlsPlayer'
@@ -396,6 +397,19 @@ export function VideoPlayer({
           </div>
         </div>
       </div>
+
+      {/*
+        Pre-roll (plan §9). Last in the box so it paints over the controls, and
+        self-contained: it listens to the media element rather than wrapping the
+        play control, renders nothing when ads are unconfigured, and can never
+        hold up playback. See src/components/player/AdController.tsx.
+      */}
+      <AdController
+        videoRef={videoRef}
+        containerRef={containerRef}
+        videoId={videoId}
+        sessionId={sessionId}
+      />
     </div>
   )
 }

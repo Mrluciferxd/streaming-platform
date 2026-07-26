@@ -1,9 +1,7 @@
-import { timingSafeEqual } from 'node:crypto'
-
 import { sql } from 'drizzle-orm'
 
 import { db } from '@/db'
-import { env } from '@/lib/env'
+import { isAuthorisedCron, unauthorisedCron } from '../auth'
 
 export const dynamic = 'force-dynamic'
 // Rollup over a day of events plus partition maintenance; the default 10s
@@ -29,9 +27,7 @@ export const maxDuration = 60
  * or a double-fire cannot double-count.
  */
 export async function GET(request: Request) {
-  if (!isAuthorised(request)) {
-    return Response.json({ error: 'unauthorised' }, { status: 401 })
-  }
+  if (!isAuthorisedCron(request)) return unauthorisedCron()
 
   const started = Date.now()
   const result: Record<string, unknown> = {}
@@ -67,23 +63,4 @@ export async function GET(request: Request) {
       { status: 500 },
     )
   }
-}
-
-/**
- * Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without this check the
- * endpoint is a public trigger for a minute of database work.
- */
-function isAuthorised(request: Request): boolean {
-  const header = request.headers.get('authorization') ?? ''
-  const provided = header.startsWith('Bearer ') ? header.slice(7) : ''
-  if (!provided) return false
-
-  const a = Buffer.from(provided)
-  const b = Buffer.from(env.CRON_SECRET)
-  if (a.length !== b.length) {
-    timingSafeEqual(b, b)
-    return false
-  }
-
-  return timingSafeEqual(a, b)
 }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db, users } from '@/db'
 import { hashPassword } from '@/lib/auth/password'
 import { clientIp, createSession } from '@/lib/auth/session'
+import { clientIdentity, rateLimit, RULES, tooManyRequests } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,11 @@ const bodySchema = z.object({
 const CONSENT_VERSION = '2026-07'
 
 export async function POST(request: Request) {
+  // First, so that a signup flood is stopped before it buys ~100ms of scrypt on
+  // a serverless instance and a permanent row.
+  const limit = await rateLimit(RULES.register, clientIdentity(request))
+  if (!limit.ok) return tooManyRequests(limit)
+
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return Response.json(
