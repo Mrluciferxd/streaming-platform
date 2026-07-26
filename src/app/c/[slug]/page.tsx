@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
-import { VideoGrid } from '@/components/Rail'
+import { TitleGrid } from '@/components/Row'
 import { getCategory, listByCategory, listCategories } from '@/lib/queries/videos'
 
 export const revalidate = 60
@@ -37,17 +37,17 @@ export default async function CategoryPage({ params }: Props) {
   const { items } = await listByCategory(slug, 30)
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">{category.name}</h1>
+    <div className="px-4 pt-28 pb-16 sm:px-12">
+      <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{category.name}</h1>
       {category.description ? (
-        <p className="mt-1 text-sm text-neutral-500">{category.description}</p>
+        <p className="mt-2 max-w-2xl text-sm text-[#b3b3b3]">{category.description}</p>
       ) : null}
 
       <div className="mt-6">
         {items.length > 0 ? (
-          <VideoGrid videos={items} />
+          <TitleGrid videos={items} />
         ) : (
-          <p className="py-12 text-center text-sm text-neutral-500">
+          <p className="py-16 text-center text-sm text-[#808080]">
             Nothing published in this category yet.
           </p>
         )}

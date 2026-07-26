@@ -1,14 +1,58 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Helvetica Neue', Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+
+  /* Netflix's actual surface values. #141414 rather than pure black: against a
+     true #000 the poster art loses its edges and rows stop reading as rows. */
+  --color-surface: #141414;
+  --color-surface-raised: #181818;
+  --color-surface-hover: #232323;
+  --color-brand: #e50914;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b3b3b3;
+  --color-text-muted: #808080;
 }
 
-/* Self-hosted, subset fonts go here with font-display: swap (plan §8). Until
-   then the system stack costs zero bytes and zero layout shift. */
+/*
+  Dark only, deliberately.
 
+  A lean-back streaming interface is viewed in dim rooms and at night, and every
+  frame of poster art is colour-graded against a dark surround. A light theme
+  would wash that out, so there is no theme toggle to honour and no
+  prefers-color-scheme branch to maintain.
+*/
 html {
-  color-scheme: light dark;
+  color-scheme: dark;
+  background-color: var(--color-surface);
+  /* Rows are horizontally scrolled; nothing should bounce the page sideways. */
+  overflow-x: hidden;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+/* Row scrollbars are hidden — navigation is by chevron and by drag. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+  The rank numerals on the Top 10 row: outlined, not filled, so the poster
+  beside them stays the brightest thing in the row.
+*/
+.rank-numeral {
+  -webkit-text-stroke: 3px #4d4d4d;
+  color: transparent;
+  font-weight: 800;
+  line-height: 0.75;
 }
 
 @media (prefers-reduced-motion: reduce) {

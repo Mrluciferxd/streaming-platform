@@ -17,10 +17,9 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
-  ],
+  // Single value: the interface is dark-only, so there is no light variant for
+  // the browser chrome to match.
+  themeColor: '#141414',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -37,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </>
         ) : null}
       </head>
-      <body className="min-h-dvh bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
+      <body className="min-h-dvh bg-[#141414] text-white antialiased">
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

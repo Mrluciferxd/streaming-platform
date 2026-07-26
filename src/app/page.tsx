@@ -1,20 +1,26 @@
 import Link from 'next/link'
 
-import { Rail } from '@/components/Rail'
-import { listByCategory, listCategoriesWithVideos, listLatest, listTrending } from '@/lib/queries/videos'
+import { Hero } from '@/components/Hero'
+import { Row } from '@/components/Row'
+import {
+  getVideoBySlug,
+  listByCategory,
+  listCategoriesWithVideos,
+  listLatest,
+  listTrending,
+} from '@/lib/queries/videos'
 
 /**
- * Homepage rails (plan §7 MVP).
+ * Home.
  *
- * ISR with a 60s window: the content changes when something is published, not
- * per request, so nearly every visitor gets a static page from the edge. That is
- * what keeps TTFB under the 200 ms target in plan §8 without a cache layer in
+ * A billboard, then rows. ISR with a 60s window, because the catalogue changes
+ * when something is published rather than per request — so almost every visitor
+ * gets a static page and TTFB stays under the plan §8 target without a cache in
  * front of the database.
  *
- * "Continue Watching" is deliberately absent here — it is per-viewer, and
- * putting it on a shared cached page would either leak one viewer's history to
- * another or make the page uncacheable. It renders client-side from localStorage
- * until accounts exist.
+ * Continue Watching is absent on purpose: it is per-viewer, and putting it on a
+ * shared cached page would either leak one viewer's history to the next or make
+ * the page uncacheable.
  */
 export const revalidate = 60
 
@@ -28,48 +34,49 @@ export default async function Home() {
   const [trending, latest, categories] = await Promise.all([
     listTrending(12),
     listLatest(12),
-    listCategoriesWithVideos(4),
+    listCategoriesWithVideos(5),
   ])
 
-  const categoryRails = await Promise.all(
+  if (latest.items.length === 0) return <EmptyLibrary />
+
+  // The billboard leads on whatever is trending, falling back to newest.
+  const featured = trending[0] ?? latest.items[0]!
+  const featuredDetail = await getVideoBySlug(featured.slug)
+
+  const categoryRows = await Promise.all(
     categories.map(async (category) => ({
       ...category,
       videos: (await listByCategory(category.slug, 12)).items,
     })),
   )
 
-  if (latest.items.length === 0) {
-    return <EmptyLibrary />
-  }
-
   return (
-    <div className="mx-auto max-w-7xl py-4">
-      <Rail title="Trending this week" videos={trending} priority />
-      <Rail title="New releases" href="/latest" videos={latest.items} />
+    <>
+      <Hero video={featured} description={featuredDetail?.description} />
 
-      {categoryRails.map((category) => (
-        <Rail
-          key={category.id}
-          title={category.name}
-          href={`/c/${category.slug}`}
-          videos={category.videos}
-        />
-      ))}
-    </div>
+      {/* Pulled up into the hero's bottom fade so the first row emerges from
+          the artwork rather than starting below a hard edge. */}
+      <div className="relative z-10 -mt-[10vw] pb-16">
+        <Row title="Trending Now" videos={trending} ranked priority />
+        <Row title="New Releases" videos={latest.items} />
+
+        {categoryRows.map((category) => (
+          <Row key={category.id} title={category.name} videos={category.videos} />
+        ))}
+      </div>
+    </>
   )
 }
 
 function EmptyLibrary() {
   return (
-    <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 px-6 py-24 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">Nothing published yet</h1>
-      <p className="text-sm text-neutral-500">
+    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center gap-4 px-6 text-center">
+      <h1 className="text-3xl font-black tracking-tight">Nothing published yet</h1>
+      <p className="text-sm text-[#b3b3b3]">
         Transcode a video and publish it, and it will appear here. For a local test run:
       </p>
-      <code className="rounded bg-neutral-100 px-3 py-2 text-left text-xs dark:bg-neutral-900">
-        npm run seed:video
-      </code>
-      <Link href="/api/health" className="text-sm text-red-600 hover:underline">
+      <code className="rounded bg-[#232323] px-3 py-2 text-left text-xs">npm run seed:video</code>
+      <Link href="/api/health" className="text-sm text-[#e50914] hover:underline">
         Check service health
       </Link>
     </div>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { VideoGrid } from '@/components/Rail'
+import { TitleGrid } from '@/components/Row'
 import { searchVideos } from '@/lib/queries/videos'
 
 export const dynamic = 'force-dynamic'
@@ -23,11 +23,11 @@ export default async function SearchPage({ searchParams }: Props) {
   const { items } = query ? await searchVideos(query, 30) : { items: [] }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      <h1 className="text-xl font-semibold tracking-tight">
+    <div className="px-4 pt-28 pb-16 sm:px-12">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
         {query ? (
           <>
-            Results for <span className="text-red-600">{query}</span>
+            Results for <span className="text-[#e50914]">{query}</span>
           </>
         ) : (
           'Search'
@@ -36,16 +36,16 @@ export default async function SearchPage({ searchParams }: Props) {
 
       <div className="mt-6">
         {!query ? (
-          <p className="text-sm text-neutral-500">Type something in the search box above.</p>
+          <p className="text-sm text-[#b3b3b3]">Type something in the search box above.</p>
         ) : items.length > 0 ? (
           <>
-            <p className="mb-4 text-sm text-neutral-500">
+            <p className="mb-5 text-sm text-[#b3b3b3]">
               {items.length} result{items.length === 1 ? '' : 's'}
             </p>
-            <VideoGrid videos={items} />
+            <TitleGrid videos={items} />
           </>
         ) : (
-          <p className="py-12 text-center text-sm text-neutral-500">
+          <p className="py-16 text-center text-sm text-[#808080]">
             Nothing matched “{query}”. Try a different spelling or a broader term.
           </p>
         )}
