@@ -38,16 +38,16 @@ export default async function CategoryPage({ params }: Props) {
 
   return (
     <div className="px-4 pt-28 pb-16 sm:px-12">
-      <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{category.name}</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{category.name}</h1>
       {category.description ? (
-        <p className="mt-2 max-w-2xl text-sm text-[#b3b3b3]">{category.description}</p>
+        <p className="mt-2 max-w-2xl text-sm text-ink-soft">{category.description}</p>
       ) : null}
 
       <div className="mt-6">
         {items.length > 0 ? (
           <TitleGrid videos={items} />
         ) : (
-          <p className="py-16 text-center text-sm text-[#808080]">
+          <p className="py-16 text-center text-sm text-muted">
             Nothing published in this category yet.
           </p>
         )}

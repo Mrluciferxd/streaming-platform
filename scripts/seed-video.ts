@@ -53,6 +53,9 @@ type Sample = {
   size: string
   duration: number
   pattern: string
+  season: string
+  score: number
+  dub: boolean
 }
 
 /**
@@ -61,11 +64,11 @@ type Sample = {
  * identical 720p samples would not.
  */
 const SAMPLES: Sample[] = [
-  { title: 'મારી ફિલ્મ', description: 'A Gujarati short film.', category: 'short-films', language: 'gu', ageRating: 'U', size: '1280x720', duration: 20, pattern: 'testsrc2' },
-  { title: 'मेरी वेब सीरीज़', description: 'Episode one of a Hindi web series.', category: 'web-series', language: 'hi', ageRating: 'UA13', size: '1920x1080', duration: 16, pattern: 'smptebars' },
-  { title: 'Street Food of Ahmedabad', description: 'A walk through the night market.', category: 'food-travel', language: 'en', ageRating: 'U', size: '854x480', duration: 14, pattern: 'testsrc' },
-  { title: 'Vertical Comedy Clip', description: 'Shot on a phone, as most things are.', category: 'comedy', language: 'hi', ageRating: 'UA7', size: '480x854', duration: 12, pattern: 'testsrc2' },
-  { title: 'Morning Raga', description: 'Live recording.', category: 'music', language: 'hi', ageRating: 'U', size: '640x360', duration: 18, pattern: 'smptehdbars' },
+  { title: 'Sakura no Kiseki', description: 'A transfer student discovers the school rooftop leads somewhere it should not.', category: 'slice-of-life', language: 'ja', ageRating: 'U', size: '1280x720', duration: 20, pattern: 'testsrc2', season: 'Fall 2026', score: 84, dub: true },
+  { title: 'Hoshi no Kenshi', description: 'Two rival swordsmen are bound to the same falling star.', category: 'shonen', language: 'ja', ageRating: 'UA13', size: '1920x1080', duration: 16, pattern: 'smptebars', season: 'Fall 2026', score: 91, dub: true },
+  { title: 'Isekai Ramen Master', description: 'Summoned to another world with nothing but a noodle cart.', category: 'isekai', language: 'ja', ageRating: 'U', size: '854x480', duration: 14, pattern: 'testsrc', season: 'Summer 2026', score: 78, dub: false },
+  { title: 'Yoru no Kissaten', description: 'A late-night cafe where the regulars are not entirely human.', category: 'supernatural', language: 'ja', ageRating: 'UA13', size: '480x854', duration: 12, pattern: 'testsrc2', season: 'Winter 2026', score: 88, dub: false },
+  { title: 'Kikai Otome: Rebuild', description: 'Salvage-crew pilots restore a mech nobody wants found.', category: 'mecha', language: 'ja', ageRating: 'UA16', size: '640x360', duration: 18, pattern: 'smptehdbars', season: 'Spring 2026', score: 73, dub: true },
 ]
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'seed-'))
@@ -78,12 +81,15 @@ try {
         {
           title: process.argv[3] ?? path.basename(customInput, path.extname(customInput)),
           description: '',
-          category: process.argv[4] ?? 'short-films',
+          category: process.argv[4] ?? 'action',
           language: 'hi',
           ageRating: 'U',
           size: '',
           duration: 0,
           pattern: '',
+          season: '',
+          score: 0,
+          dub: false,
         },
       ]
     : SAMPLES
@@ -115,7 +121,13 @@ try {
         description: sample.description,
         language: sample.language,
         ageRating: sample.ageRating,
-        contentDescriptor: sample.ageRating === 'U' ? null : 'Mild language',
+        contentDescriptor: sample.ageRating === 'U' ? null : 'Mild fantasy violence',
+        seasonLabel: sample.season || null,
+        score: sample.score || null,
+        // Subs on everything, dubs only where recorded — the split an anime
+        // catalogue actually has.
+        hasSub: true,
+        hasDub: sample.dub,
         status: 'processing',
         provider: 'local',
       })

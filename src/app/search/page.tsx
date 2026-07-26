@@ -24,10 +24,10 @@ export default async function SearchPage({ searchParams }: Props) {
 
   return (
     <div className="px-4 pt-28 pb-16 sm:px-12">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+      <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">
         {query ? (
           <>
-            Results for <span className="text-[#e50914]">{query}</span>
+            Results for <span className="text-primary">{query}</span>
           </>
         ) : (
           'Search'
@@ -36,16 +36,16 @@ export default async function SearchPage({ searchParams }: Props) {
 
       <div className="mt-6">
         {!query ? (
-          <p className="text-sm text-[#b3b3b3]">Type something in the search box above.</p>
+          <p className="text-sm text-ink-soft">Type something in the search box above.</p>
         ) : items.length > 0 ? (
           <>
-            <p className="mb-5 text-sm text-[#b3b3b3]">
+            <p className="mb-5 text-sm text-ink-soft">
               {items.length} result{items.length === 1 ? '' : 's'}
             </p>
             <TitleGrid videos={items} />
           </>
         ) : (
-          <p className="py-16 text-center text-sm text-[#808080]">
+          <p className="py-16 text-center text-sm text-muted">
             Nothing matched “{query}”. Try a different spelling or a broader term.
           </p>
         )}

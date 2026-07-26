@@ -64,7 +64,8 @@ export function Row({
 
   return (
     <section className="group/row relative py-3">
-      <h2 className="mb-2 px-4 text-base font-medium text-[#e5e5e5] sm:px-12 md:text-lg">
+      <h2 className="mb-1 flex items-center gap-2 px-4 font-display text-lg font-extrabold tracking-tight text-ink sm:px-12 md:text-xl">
+        <span className="h-5 w-1.5 rounded-full bg-primary" aria-hidden />
         {title}
       </h2>
 
@@ -79,15 +80,15 @@ export function Row({
         <div
           ref={scrollerRef}
           onScroll={measure}
-          className="no-scrollbar flex snap-x gap-1.5 overflow-x-auto scroll-smooth px-4 py-6 sm:px-12"
+          className="no-scrollbar flex snap-x gap-3 overflow-x-auto scroll-smooth px-4 py-5 sm:px-12"
         >
           {videos.map((video, index) => (
             <div
               key={video.id}
               className={`shrink-0 snap-start ${
                 ranked
-                  ? 'w-[15.5rem] sm:w-[19rem]'
-                  : 'w-[9.5rem] sm:w-[13rem] lg:w-[15.5rem]'
+                  ? 'w-[11.5rem] sm:w-[14rem]'
+                  : 'w-[8.5rem] sm:w-[10rem] lg:w-[11.5rem]'
               }`}
             >
               <TitleCard
@@ -128,8 +129,8 @@ function Chevron({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`absolute inset-y-6 z-30 hidden w-9 items-center justify-center bg-black/50 text-white opacity-0 transition-opacity duration-200 group-hover/row:opacity-100 focus-visible:opacity-100 hover:bg-black/75 md:flex sm:w-12 ${
-        side === 'left' ? 'left-0' : 'right-0'
+      className={`absolute top-1/2 z-30 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-surface text-ink shadow-lg ring-1 ring-line opacity-0 transition-all duration-200 group-hover/row:opacity-100 focus-visible:opacity-100 hover:bg-primary hover:text-white md:flex ${
+        side === 'left' ? 'left-2 sm:left-5' : 'right-2 sm:right-5'
       }`}
     >
       <svg
@@ -151,7 +152,7 @@ function Chevron({
 /** Grid for category and search pages, where browsing beats scrubbing. */
 export function TitleGrid({ videos }: { videos: VideoCardData[] }) {
   return (
-    <div className="grid grid-cols-2 gap-x-2 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+    <div className="grid grid-cols-3 gap-x-3 gap-y-7 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7">
       {videos.map((video, index) => (
         <TitleCard key={video.id} video={video} priority={index < 6} />
       ))}

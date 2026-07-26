@@ -25,9 +25,9 @@ import {
 export const revalidate = 60
 
 export const metadata = {
-  title: 'Watch free regional films, series and shorts',
+  title: 'Watch anime free — subbed and dubbed',
   description:
-    'Free streaming of Gujarati and Hindi short films, features, web series, music and documentaries.',
+    'Stream anime series and films free. Simulcast seasons, subs and dubs, no subscription.',
 }
 
 export default async function Home() {
@@ -54,11 +54,9 @@ export default async function Home() {
     <>
       <Hero video={featured} description={featuredDetail?.description} />
 
-      {/* Pulled up into the hero's bottom fade so the first row emerges from
-          the artwork rather than starting below a hard edge. */}
-      <div className="relative z-10 -mt-[10vw] pb-16">
-        <Row title="Trending Now" videos={trending} ranked priority />
-        <Row title="New Releases" videos={latest.items} />
+      <div className="relative z-10 pb-12">
+        <Row title="Top 10 This Week" videos={trending} ranked priority />
+        <Row title="New Episodes" videos={latest.items} />
 
         {categoryRows.map((category) => (
           <Row key={category.id} title={category.name} videos={category.videos} />
@@ -71,12 +69,14 @@ export default async function Home() {
 function EmptyLibrary() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-3xl font-black tracking-tight">Nothing published yet</h1>
-      <p className="text-sm text-[#b3b3b3]">
+      <h1 className="font-display text-3xl font-extrabold tracking-tight">
+        Nothing published yet
+      </h1>
+      <p className="text-sm text-ink-soft">
         Transcode a video and publish it, and it will appear here. For a local test run:
       </p>
-      <code className="rounded bg-[#232323] px-3 py-2 text-left text-xs">npm run seed:video</code>
-      <Link href="/api/health" className="text-sm text-[#e50914] hover:underline">
+      <code className="rounded-lg bg-mist px-3 py-2 text-left text-xs font-semibold">npm run seed:video</code>
+      <Link href="/api/health" className="text-sm font-semibold text-primary hover:underline">
         Check service health
       </Link>
     </div>

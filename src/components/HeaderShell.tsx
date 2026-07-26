@@ -43,14 +43,17 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${
-        scrolled ? 'bg-[#141414]' : 'bg-gradient-to-b from-black/80 to-transparent'
+      className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? 'bg-surface/85 shadow-[0_4px_24px_-12px_rgba(46,42,53,0.25)] backdrop-blur-xl'
+          : 'bg-transparent'
       }`}
     >
       <div className="flex h-[68px] items-center gap-6 px-4 sm:px-12">
         <Link href="/" className="shrink-0" aria-label="Home">
-          <span className="text-2xl font-black tracking-tighter text-[#e50914] sm:text-3xl">
-            STREAMFLIX
+          <span className="font-display text-2xl font-extrabold tracking-tight text-primary sm:text-3xl">
+            Sakura
+            <span className="text-secondary">TV</span>
           </span>
         </Link>
 
@@ -77,10 +80,10 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
               const trimmed = query.trim()
               if (trimmed) router.push(`/search?q=${encodeURIComponent(trimmed)}`)
             }}
-            className={`flex items-center transition-all duration-300 ${
+            className={`flex items-center rounded-full transition-all duration-300 ${
               searchOpen
-                ? 'w-52 border border-white/40 bg-black/80 px-2 sm:w-64'
-                : 'w-8 border border-transparent'
+                ? 'w-52 bg-surface px-2 shadow-inner ring-2 ring-primary/30 sm:w-64'
+                : 'w-9'
             }`}
           >
             <button
@@ -88,7 +91,7 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
               onClick={() => setSearchOpen((open) => !open)}
               aria-label={searchOpen ? 'Close search' : 'Search'}
               aria-expanded={searchOpen}
-              className="shrink-0 p-1 text-white"
+              className="shrink-0 rounded-full p-1.5 text-ink transition hover:bg-primary-soft"
             >
               <svg
                 className="h-5 w-5"
@@ -112,10 +115,10 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
               onBlur={() => {
                 if (!query) setSearchOpen(false)
               }}
-              placeholder="Titles"
-              aria-label="Search titles"
+              placeholder="Search anime"
+              aria-label="Search anime"
               tabIndex={searchOpen ? 0 : -1}
-              className={`w-full bg-transparent py-1.5 text-sm text-white outline-none placeholder:text-white/50 ${
+              className={`w-full bg-transparent py-1.5 text-sm text-ink outline-none placeholder:text-muted ${
                 searchOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
             />
@@ -124,7 +127,7 @@ export function HeaderShell({ categories }: { categories: Category[] }) {
           {/* Profile avatar. A placeholder until accounts exist. */}
           <div
             aria-hidden
-            className="h-8 w-8 shrink-0 rounded bg-gradient-to-br from-[#e50914] to-[#7b0710]"
+            className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-primary to-secondary ring-2 ring-white shadow-sm"
           />
         </div>
       </div>
@@ -145,7 +148,9 @@ function NavLink({
     <Link
       href={href}
       className={`whitespace-nowrap transition-colors ${
-        active ? 'font-semibold text-white' : 'text-[#e5e5e5] hover:text-white/70'
+        active
+          ? 'font-bold text-primary'
+          : 'font-semibold text-ink-soft hover:text-primary'
       }`}
     >
       {children}

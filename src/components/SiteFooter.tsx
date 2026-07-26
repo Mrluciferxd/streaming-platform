@@ -12,26 +12,26 @@ import Link from 'next/link'
  */
 export function SiteFooter() {
   return (
-    <footer className="border-t border-white/10 bg-[#141414] px-4 py-10 text-sm sm:px-12">
+    <footer className="mt-8 border-t border-line bg-mist px-4 py-10 text-sm sm:px-12">
       <div className="flex flex-col gap-4">
-        <nav className="flex flex-wrap gap-x-6 gap-y-2 text-[#808080]">
-          <Link href="/legal/terms" className="hover:text-white">
+        <nav className="flex flex-wrap gap-x-6 gap-y-2 text-ink-soft">
+          <Link href="/legal/terms" className="font-semibold transition hover:text-primary">
             Terms
           </Link>
-          <Link href="/legal/privacy" className="hover:text-white">
+          <Link href="/legal/privacy" className="font-semibold transition hover:text-primary">
             Privacy
           </Link>
-          <Link href="/legal/copyright" className="hover:text-white">
+          <Link href="/legal/copyright" className="font-semibold transition hover:text-primary">
             Copyright / DMCA
           </Link>
-          <Link href="/legal/grievance" className="hover:text-white">
+          <Link href="/legal/grievance" className="font-semibold transition hover:text-primary">
             Grievance Officer
           </Link>
         </nav>
 
-        <p className="max-w-2xl text-xs text-[#6d6d6d]">
+        <p className="max-w-2xl text-xs text-muted">
           Content is self-classified under the IT Rules 2021 (U, U/A 7+, U/A 13+, U/A 16+, A).
-          Ratings appear on every title.
+          Ratings appear on every title. All series are licensed from their rights holders.
         </p>
       </div>
     </footer>

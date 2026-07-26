@@ -82,10 +82,10 @@ export default async function WatchPage({ params }: Props) {
         <div className="min-w-0">
           <WatchPlayer slug={video.slug} posterUrl={video.posterUrl} />
 
-          <h1 className="mt-5 text-2xl font-black tracking-tight sm:text-4xl">{video.title}</h1>
+          <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight sm:text-4xl">{video.title}</h1>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-[#b3b3b3]">
-            <span className="rounded-xs border border-white/40 px-1.5 py-px text-xs">
+          <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm font-medium text-ink-soft">
+            <span className="rounded-md bg-mist px-2 py-0.5 text-xs font-bold">
               {formatRating(video.ageRating)}
             </span>
             {video.durationSec ? <span>{formatRuntime(video.durationSec)}</span> : null}
@@ -94,7 +94,7 @@ export default async function WatchPage({ params }: Props) {
               <Link
                 key={category.slug}
                 href={`/c/${category.slug}`}
-                className="rounded-sm bg-white/10 px-2.5 py-0.5 text-xs transition hover:bg-white/20"
+                className="rounded-full bg-secondary-soft px-2.5 py-0.5 text-xs font-bold text-secondary transition hover:bg-secondary hover:text-white"
               >
                 {category.name}
               </Link>
@@ -107,21 +107,21 @@ export default async function WatchPage({ params }: Props) {
             informed choice (plan §10).
           */}
           {video.contentDescriptor ? (
-            <p className="mt-3 text-xs text-[#808080]">
+            <p className="mt-3 text-xs text-muted">
               <span className="font-medium">Content advisory:</span> {video.contentDescriptor}
             </p>
           ) : null}
 
           {video.description ? (
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed whitespace-pre-line text-[#d2d2d2]">
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed whitespace-pre-line text-ink-soft">
               {video.description}
             </p>
           ) : null}
         </div>
 
         <aside className="min-w-0">
-          <h2 className="mb-4 text-base font-medium text-[#e5e5e5]">More Like This</h2>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-5 sm:grid-cols-3 lg:grid-cols-1">
+          <h2 className="mb-4 font-display text-lg font-extrabold tracking-tight text-ink">More Like This</h2>
+          <div className="grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 lg:grid-cols-2">
             {related.map((item) => (
               <TitleCard key={item.id} video={item} />
             ))}

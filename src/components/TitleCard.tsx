@@ -4,21 +4,20 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 
-import { formatRating, formatRuntime, languageLabel } from '@/lib/format'
+import { formatRating, formatRuntime } from '@/lib/format'
 import type { VideoCard as VideoCardData } from '@/lib/queries/videos'
 
 /**
- * Poster tile.
+ * Portrait title card.
  *
- * Deliberately carries no view count and no upload date. Those are creator-feed
- * signals — they tell you how a video is doing. A catalogue interface is
- * answering a different question ("is this worth my evening?"), and the answer
- * is the artwork, the rating and the runtime. Everything else is noise on the
- * row.
+ * 2:3, because that is the shape anime key art is drawn in and the shape every
+ * anime catalogue displays it in. A landscape card would crop the character
+ * composition — which is the entire selling point of a key visual — down to a
+ * band across the middle.
  *
- * On hover the tile lifts into a card: the title, a short line of metadata, and
- * the two actions that matter. Nothing about the resting state moves, so a row
- * of tiles stays a clean grid until you engage with it.
+ * SUB and DUB sit on the resting card rather than behind a hover. For anime
+ * viewers that is not trivia, it is the first filter applied: a dub-only viewer
+ * scanning a subbed row is looking at nothing they can watch.
  */
 export function TitleCard({
   video,
@@ -31,6 +30,9 @@ export function TitleCard({
 }) {
   const [hovered, setHovered] = useState(false)
 
+  // Falls back to the 16:9 frame until real key art exists for the title.
+  const art = video.portraitUrl ?? video.posterUrl
+
   return (
     <Link
       href={`/watch/${video.slug}`}
@@ -39,98 +41,101 @@ export function TitleCard({
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
-      className="group relative block rounded-sm outline-none"
+      className="group block rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-primary/50"
       aria-label={video.title}
     >
-      <div className="relative flex items-end">
+      {/*
+        The numeral is positioned, not a flex sibling. As a sibling its width
+        varied by digit — "1" is far narrower than "4" — which changed the
+        poster's width, and with a fixed aspect ratio that changed its height
+        too, leaving the whole ranked row visibly staggered.
+      */}
+      <div className={`relative ${rank !== undefined ? 'pl-9 sm:pl-11' : ''}`}>
         {rank !== undefined ? (
           <span
             aria-hidden
-            className="rank-numeral shrink-0 select-none text-[5.5rem] tracking-tighter sm:text-[7rem]"
+            className="rank-numeral pointer-events-none absolute bottom-4 left-0 z-0 select-none font-display text-[5.5rem] sm:text-[7rem]"
           >
             {rank}
           </span>
         ) : null}
 
         <div
-          className={`relative aspect-video w-full overflow-hidden rounded-sm bg-neutral-800 transition-[transform,box-shadow] duration-300 ease-out ${
-            hovered ? 'z-20 scale-[1.06] shadow-2xl shadow-black/80' : 'z-0 scale-100'
+          className={`relative z-10 aspect-2/3 w-full overflow-hidden rounded-2xl bg-mist transition-all duration-300 ease-out ${
+            hovered
+              ? '-translate-y-1.5 shadow-[0_18px_40px_-12px_rgba(255,92,138,0.45)]'
+              : 'shadow-[0_6px_18px_-10px_rgba(46,42,53,0.35)]'
           }`}
         >
-          {video.posterUrl ? (
+          {art ? (
             <Image
-              src={video.posterUrl}
+              src={art}
               alt=""
               fill
-              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 320px"
-              className="object-cover"
+              sizes="(max-width: 640px) 40vw, (max-width: 1024px) 24vw, 210px"
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
               priority={priority}
               loading={priority ? undefined : 'lazy'}
             />
           ) : null}
 
-          {/* Scrim so overlaid text stays legible on bright artwork. */}
-          <div
-            className={`absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent transition-opacity duration-300 ${
-              hovered ? 'opacity-100' : 'opacity-70'
-            }`}
-          />
+          <div className="absolute top-2 left-2 flex flex-col gap-1">
+            {video.hasSub ? <Pill tone="secondary">SUB</Pill> : null}
+            {video.hasDub ? <Pill tone="accent">DUB</Pill> : null}
+          </div>
 
-          {video.durationSec ? (
-            <span className="absolute top-2 right-2 rounded-sm bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white/90">
-              {formatRuntime(video.durationSec)}
+          {video.score !== null && video.score !== undefined ? (
+            <span className="absolute top-2 right-2 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-ink shadow-sm backdrop-blur">
+              <StarGlyph className="h-2.5 w-2.5 text-[#ffb020]" />
+              {(video.score / 10).toFixed(1)}
             </span>
           ) : null}
 
-          <div className="absolute inset-x-0 bottom-0 p-2.5">
-            <h3 className="line-clamp-2 text-[13px] leading-tight font-semibold drop-shadow-lg">
-              {video.title}
-            </h3>
+          {/* Only deep enough to seat the badges; the artwork stays the subject. */}
+          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/75 to-transparent" />
 
-            <div
-              className={`grid transition-[grid-template-rows,opacity] duration-300 ${
-                hovered ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-              }`}
-            >
-              <div className="overflow-hidden">
-                <div className="flex items-center gap-2 pt-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-black">
-                    <PlayGlyph className="ml-0.5 h-3.5 w-3.5" />
-                  </span>
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white/50 text-white">
-                    <PlusGlyph className="h-3.5 w-3.5" />
-                  </span>
-                </div>
-
-                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-white/70">
-                  <span className="rounded-xs border border-white/40 px-1 py-px">
-                    {formatRating(video.ageRating)}
-                  </span>
-                  <span className="uppercase">{languageLabel(video.language)}</span>
-                </p>
-              </div>
-            </div>
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 p-2 text-[10px] font-semibold text-white/90">
+            {video.seasonLabel ? <span>{video.seasonLabel}</span> : null}
+            {video.durationSec ? (
+              <>
+                {video.seasonLabel ? <span aria-hidden>·</span> : null}
+                <span>{formatRuntime(video.durationSec)}</span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
+
+      <h3 className="mt-2 line-clamp-2 font-display text-sm leading-snug font-semibold text-ink transition-colors group-hover:text-primary">
+        {video.title}
+      </h3>
+
+      <p className="mt-0.5 text-[11px] font-medium text-muted">
+        {formatRating(video.ageRating)}
+      </p>
     </Link>
   )
 }
 
-type GlyphProps = { className?: string }
+function Pill({ tone, children }: { tone: 'secondary' | 'accent'; children: React.ReactNode }) {
+  const tones = {
+    secondary: 'bg-secondary text-white',
+    accent: 'bg-accent text-white',
+  } as const
 
-function PlayGlyph({ className }: GlyphProps) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M8 5v14l11-7z" />
-    </svg>
+    <span
+      className={`rounded-md px-1.5 py-0.5 text-[9px] font-extrabold tracking-wider shadow-sm ${tones[tone]}`}
+    >
+      {children}
+    </span>
   )
 }
 
-function PlusGlyph({ className }: GlyphProps) {
+function StarGlyph({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2l2.9 6.3 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.3 1.3-6.6L2.5 9.1l6.6-.8z" />
     </svg>
   )
 }

@@ -27,9 +27,14 @@ export type VideoCard = {
   title: string
   durationSec: number | null
   posterUrl: string | null
+  portraitUrl: string | null
   previewUrl: string | null
   language: string
   ageRating: string
+  hasSub: boolean
+  hasDub: boolean
+  seasonLabel: string | null
+  score: number | null
   viewCount: number
   publishedAt: Date | null
 }
@@ -40,9 +45,14 @@ const cardColumns = {
   title: videos.title,
   durationSec: videos.durationSec,
   posterUrl: videos.posterUrl,
+  portraitUrl: videos.portraitUrl,
   previewUrl: videos.previewUrl,
   language: videos.language,
   ageRating: videos.ageRating,
+  hasSub: videos.hasSub,
+  hasDub: videos.hasDub,
+  seasonLabel: videos.seasonLabel,
+  score: videos.score,
   viewCount: videos.viewCount,
   publishedAt: videos.publishedAt,
 }
@@ -98,18 +108,18 @@ export type Page<T> = { items: T[]; nextCursor: string | null }
  * change rather than a rewrite of every row. The cost is that nothing may hand
  * a raw path to a component, so every read path resolves here.
  */
-async function withAssetUrls<T extends { posterUrl: string | null; previewUrl?: string | null }>(
-  rows: T[],
-): Promise<T[]> {
+async function withAssetUrls<
+  T extends { posterUrl: string | null; portraitUrl?: string | null; previewUrl?: string | null },
+>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return rows
 
   const provider = await getVideoProvider()
-  const resolve = (path: string | null | undefined) =>
-    path ? provider.publicUrl(path) : null
+  const resolve = (path: string | null | undefined) => (path ? provider.publicUrl(path) : null)
 
   return rows.map((row) => ({
     ...row,
     posterUrl: resolve(row.posterUrl),
+    ...(row.portraitUrl === undefined ? {} : { portraitUrl: resolve(row.portraitUrl) }),
     ...(row.previewUrl === undefined ? {} : { previewUrl: resolve(row.previewUrl) }),
   }))
 }
@@ -242,6 +252,7 @@ export async function getVideoBySlug(slug: string) {
   return {
     ...video,
     posterUrl: url(video.posterUrl),
+    portraitUrl: url(video.portraitUrl),
     previewUrl: url(video.previewUrl),
     spriteUrl: url(video.spriteUrl),
     spriteVttUrl: url(video.spriteVttUrl),

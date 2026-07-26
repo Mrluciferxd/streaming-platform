@@ -23,17 +23,33 @@ import postgres from 'postgres'
 
 import { categories } from '../src/db/schema.ts'
 
+/**
+ * Anime genre taxonomy.
+ *
+ * These are the buckets anime viewers actually browse by, which is not the same
+ * set a general video catalogue uses. Isekai and Slice of Life are not
+ * sub-genres of anything here — they are top-level destinations, and a viewer
+ * looking for one will not find it filed under "Drama".
+ *
+ * Demographic labels (Shonen, Shojo, Seinen) sit alongside genre labels on
+ * purpose: that is how the source industry categorises, and how listings sites
+ * present it.
+ */
 const TAXONOMY = [
-  { slug: 'short-films', name: 'Short Films', icon: 'clapperboard' },
-  { slug: 'feature-films', name: 'Feature Films', icon: 'film' },
-  { slug: 'web-series', name: 'Web Series', icon: 'tv' },
+  { slug: 'action', name: 'Action', icon: 'swords' },
+  { slug: 'isekai', name: 'Isekai', icon: 'portal' },
+  { slug: 'shonen', name: 'Shonen', icon: 'flame' },
+  { slug: 'romance', name: 'Romance', icon: 'heart' },
+  { slug: 'slice-of-life', name: 'Slice of Life', icon: 'sun' },
+  { slug: 'fantasy', name: 'Fantasy', icon: 'sparkles' },
   { slug: 'comedy', name: 'Comedy', icon: 'laugh' },
-  { slug: 'music', name: 'Music', icon: 'music' },
-  { slug: 'documentary', name: 'Documentary', icon: 'camera' },
-  { slug: 'devotional', name: 'Devotional', icon: 'flame' },
-  { slug: 'food-travel', name: 'Food & Travel', icon: 'utensils' },
-  { slug: 'kids', name: 'Kids', icon: 'baby' },
-  { slug: 'talks-interviews', name: 'Talks & Interviews', icon: 'mic' },
+  { slug: 'mecha', name: 'Mecha', icon: 'robot' },
+  { slug: 'sports', name: 'Sports', icon: 'trophy' },
+  { slug: 'supernatural', name: 'Supernatural', icon: 'ghost' },
+  { slug: 'shojo', name: 'Shojo', icon: 'ribbon' },
+  { slug: 'seinen', name: 'Seinen', icon: 'moon' },
+  { slug: 'movies', name: 'Anime Films', icon: 'film' },
+  { slug: 'music', name: 'Music & AMV', icon: 'music' },
 ]
 
 const url = process.env.DATABASE_URL

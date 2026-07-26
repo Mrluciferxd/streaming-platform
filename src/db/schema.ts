@@ -225,10 +225,35 @@ export const videos = pgTable(
     durationSec: integer('duration_sec'),
 
     posterUrl: text('poster_url'),
+    /**
+     * Portrait key visual, roughly 2:3.
+     *
+     * Separate from `poster_url` because they are different artefacts, not two
+     * sizes of one. `poster_url` is a frame lifted out of the video; a key
+     * visual is commissioned art with the title treatment baked in, and it is
+     * what every anime catalogue puts on a card. Cropping a 16:9 frame to 2:3
+     * throws away most of the composition, so the card falls back to it only
+     * until real art is uploaded.
+     */
+    portraitUrl: text('portrait_url'),
     // Sprite sheet + its WebVTT index drive scrub-bar previews (plan §5.5).
     spriteUrl: text('sprite_url'),
     spriteVttUrl: text('sprite_vtt_url'),
     previewUrl: text('preview_url'), // animated WebP for card hover
+
+    /**
+     * Sub and dub are the first thing an anime viewer filters on — far more so
+     * than genre. Subtitle availability is derivable from the `subtitles` table,
+     * but a dub is an additional audio rendition, and denormalising both here
+     * keeps the card query from joining twice per tile.
+     */
+    hasSub: boolean('has_sub').notNull().default(true),
+    hasDub: boolean('has_dub').notNull().default(false),
+
+    /** Broadcast season, e.g. "Fall 2026". Anime is catalogued by cour. */
+    seasonLabel: varchar('season_label', { length: 24 }),
+    /** Community score out of 100. Null until there are enough ratings. */
+    score: smallint('score'),
 
     status: videoStatus('status').notNull().default('draft'),
     ageRating: ageRating('age_rating').notNull().default('U'),
@@ -276,6 +301,8 @@ export const videos = pgTable(
     index('videos_creator_idx').on(t.creatorId, t.publishedAt.desc()),
     index('videos_status_idx').on(t.status),
     index('videos_search_idx').using('gin', t.searchVector),
+    index('videos_season_idx').on(t.seasonLabel),
+    check('videos_score_range', sql`${t.score} is null or ${t.score} between 0 and 100`),
   ],
 )
 

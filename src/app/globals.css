@@ -1,37 +1,59 @@
 @import 'tailwindcss';
 
+/*
+  Everything here is declared in @theme rather than :root, which is what makes
+  Tailwind v4 generate real utilities for it — `bg-canvas`, `text-ink`,
+  `font-display`. The v3 habit of writing `bg-[--color-ink]` does not work in
+  v4: that emits `background-color: --color-ink`, which is invalid, and the
+  declaration is silently dropped. The failure is quiet, so it is worth naming.
+*/
 @theme {
-  --font-sans: 'Helvetica Neue', Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body), 'Baloo 2', ui-rounded, system-ui, sans-serif;
+  --font-display: var(--font-display-face), 'Baloo 2', ui-rounded, system-ui, sans-serif;
 
-  /* Netflix's actual surface values. #141414 rather than pure black: against a
-     true #000 the poster art loses its edges and rows stop reading as rows. */
-  --color-surface: #141414;
-  --color-surface-raised: #181818;
-  --color-surface-hover: #232323;
-  --color-brand: #e50914;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #b3b3b3;
-  --color-text-muted: #808080;
+  /*
+    Light, warm, and slightly pink rather than neutral grey.
+
+    Anime key art is saturated — hot pinks, cyans, sunset oranges — and a
+    neutral grey page makes all of it look muddy by comparison. A background
+    carrying a trace of the same warmth lets the artwork sit on the page instead
+    of fighting it. Pure white does the opposite: it blows out the lighter
+    passages in a key visual and makes the whole grid glare.
+  */
+  --color-canvas: #fef7fb;
+  --color-mist: #f6f1fb;
+  --color-surface: #ffffff;
+
+  /* Sakura pink carries the brand and every primary action. */
+  --color-primary: #ff5c8a;
+  --color-primary-soft: #ffd9e5;
+  /* Iris, for secondary actions and the SUB badge. */
+  --color-secondary: #7c6bf0;
+  --color-secondary-soft: #e9e5ff;
+  /* Mint for DUB — far enough from iris to stay distinct at badge size. */
+  --color-accent: #16b8a6;
+  --color-accent-soft: #ccf5ef;
+
+  /*
+    Ink, not black. #000 against a warm background reads as a hole punched in
+    the page; a desaturated plum sits in the same family as everything else.
+  */
+  --color-ink: #2e2a35;
+  --color-ink-soft: #5c5468;
+  --color-muted: #918aa0;
+  --color-line: #efe6f2;
 }
 
-/*
-  Dark only, deliberately.
-
-  A lean-back streaming interface is viewed in dim rooms and at night, and every
-  frame of poster art is colour-graded against a dark surround. A light theme
-  would wash that out, so there is no theme toggle to honour and no
-  prefers-color-scheme branch to maintain.
-*/
 html {
-  color-scheme: dark;
-  background-color: var(--color-surface);
-  /* Rows are horizontally scrolled; nothing should bounce the page sideways. */
+  color-scheme: light;
+  background-color: var(--color-canvas);
+  /* Rows scroll horizontally; the page itself never should. */
   overflow-x: hidden;
 }
 
 body {
-  background-color: var(--color-surface);
-  color: var(--color-text-primary);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 /* Row scrollbars are hidden — navigation is by chevron and by drag. */
@@ -45,14 +67,25 @@ body {
 }
 
 /*
-  The rank numerals on the Top 10 row: outlined, not filled, so the poster
-  beside them stays the brightest thing in the row.
+  Rank numerals on the Top 10 row: outlined in brand pink so they read as a
+  graphic device behind the poster rather than as text competing with it.
 */
 .rank-numeral {
-  -webkit-text-stroke: 3px #4d4d4d;
+  -webkit-text-stroke: 3px color-mix(in oklab, var(--color-primary) 50%, transparent);
   color: transparent;
   font-weight: 800;
-  line-height: 0.75;
+  line-height: 0.72;
+}
+
+/*
+  Ambient wash behind the hero. Three radial gradients rather than an image, so
+  it costs nothing to load and scales to any viewport.
+*/
+.aurora {
+  background-image:
+    radial-gradient(40rem 24rem at 10% 0%, color-mix(in oklab, var(--color-primary) 26%, transparent), transparent 62%),
+    radial-gradient(36rem 22rem at 92% 12%, color-mix(in oklab, var(--color-secondary) 24%, transparent), transparent 60%),
+    radial-gradient(30rem 20rem at 55% 100%, color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 58%);
 }
 
 @media (prefers-reduced-motion: reduce) {
