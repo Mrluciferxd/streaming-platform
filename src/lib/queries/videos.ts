@@ -8,6 +8,7 @@ import {
   videoStatsDaily,
   videoVariants,
 } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 import { getVideoProvider } from '@/lib/video'
 
 /**
@@ -58,7 +59,7 @@ const cardColumns = {
 }
 
 /** The predicate behind `videos_published_idx`. Kept in one place so a query cannot drift off the index. */
-const isLive = and(eq(videos.status, 'published'), isNull(videos.deletedAt))
+const isLive = publiclyVisible
 
 export type Cursor = { publishedAt: Date; id: string } | null
 

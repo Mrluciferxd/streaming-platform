@@ -6,6 +6,7 @@ import { and, desc, eq } from 'drizzle-orm'
 
 import { TitleGrid } from '@/components/Row'
 import { db, videos, watchlist } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 import { getSessionUser } from '@/lib/auth/session'
 import type { VideoCard } from '@/lib/queries/videos'
 import { getVideoProvider } from '@/lib/video'
@@ -42,7 +43,7 @@ export default async function MyListPage() {
     })
     .from(watchlist)
     .innerJoin(videos, eq(videos.id, watchlist.videoId))
-    .where(and(eq(watchlist.userId, user.id), eq(videos.status, 'published')))
+    .where(and(eq(watchlist.userId, user.id), publiclyVisible))
     .orderBy(desc(watchlist.addedAt))
     .limit(200)
 

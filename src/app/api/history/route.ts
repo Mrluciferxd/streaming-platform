@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, videos, watchHistory } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 import { getSessionUser } from '@/lib/auth/session'
 import { getVideoProvider } from '@/lib/video'
 
@@ -51,7 +52,7 @@ export async function GET() {
       and(
         eq(watchHistory.userId, user.id),
         eq(watchHistory.completed, false),
-        eq(videos.status, 'published'),
+        publiclyVisible,
         sql`${watchHistory.positionSec} >= ${MIN_RESUME_SECONDS}`,
       ),
     )

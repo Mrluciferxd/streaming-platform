@@ -2,6 +2,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, videos, watchlist } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 import { getSessionUser } from '@/lib/auth/session'
 import { getVideoProvider } from '@/lib/video'
 
@@ -31,7 +32,7 @@ export async function GET() {
     })
     .from(watchlist)
     .innerJoin(videos, eq(videos.id, watchlist.videoId))
-    .where(and(eq(watchlist.userId, user.id), eq(videos.status, 'published')))
+    .where(and(eq(watchlist.userId, user.id), publiclyVisible))
     .orderBy(desc(watchlist.addedAt))
     .limit(200)
 

@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 
 import { db, categories, videos } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 
 /**
  * Dynamic sitemap (plan §7).
@@ -28,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db
       .select({ slug: videos.slug, updatedAt: videos.updatedAt, publishedAt: videos.publishedAt })
       .from(videos)
-      .where(and(eq(videos.status, 'published'), isNull(videos.deletedAt)))
+      .where(publiclyVisible)
       .orderBy(desc(videos.publishedAt))
       .limit(MAX_URLS),
     db.select({ slug: categories.slug }).from(categories),

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import { categories, db, episodes, series, videoCategories, videos } from '@/db'
+import { publiclyVisible } from '@/lib/queries/visibility'
 import { getVideoProvider } from '@/lib/video'
 
 /**
@@ -18,7 +19,7 @@ import { getVideoProvider } from '@/lib/video'
  */
 
 /** Mirrors the private predicate in queries/videos.ts, which is what `videos_published_idx` covers. */
-const isLive = and(eq(videos.status, 'published'), isNull(videos.deletedAt))
+const isLive = publiclyVisible
 
 export type SeriesStatus = (typeof series.$inferSelect)['status']
 

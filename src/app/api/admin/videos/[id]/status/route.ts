@@ -71,14 +71,24 @@ export async function POST(request: Request, { params }: Params) {
       if (parsed.data.at.getTime() <= now.getTime()) return conflict('scheduled_time_in_past')
 
       /**
-       * Scheduling leaves the row at `ready` and parks the go-live time in
-       * `published_at`. It cannot set `published` early: the public queries
-       * filter on status alone, so a future-dated published row would appear on
-       * the homepage immediately and simply sort to the top.
+       * Scheduling publishes immediately with a future `published_at`, and the
+       * read path does the rest — `publiclyVisible` in
+       * src/lib/queries/visibility.ts excludes rows whose go-live time has not
+       * arrived.
        *
-       * The sweep in /api/admin/publish-due flips these when they come due.
+       * This used to park the row at `ready` and rely on /api/admin/publish-due
+       * to flip it, because the public queries filtered on status alone. That
+       * made every release depend on a job running on time: this account is on
+       * a plan that only permits daily crons, so a title scheduled for 9am
+       * could have gone live at midnight the next day, with nothing in the
+       * product indicating why. Putting the clock in the read path means a
+       * schedule cannot silently fail, because there is no longer anything to
+       * fail.
+       *
+       * /api/admin/publish-due is kept for the rows the old behaviour left at
+       * `ready`, and as a manual nudge.
        */
-      update = { status: 'ready', publishedAt: parsed.data.at }
+      update = { status: 'published', publishedAt: parsed.data.at }
       action = 'video.schedule'
       extra = { scheduledFor: parsed.data.at.toISOString() }
       break

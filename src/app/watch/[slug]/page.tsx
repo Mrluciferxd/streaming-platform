@@ -8,6 +8,7 @@ import { WatchPlayer } from '@/components/player/WatchPlayer'
 import { TitleCard } from '@/components/TitleCard'
 import { formatRating, formatRuntime, languageLabel } from '@/lib/format'
 import { getEpisodeContext } from '@/lib/queries/series'
+import { isPubliclyVisible } from '@/lib/queries/visibility'
 import { getVideoBySlug, listRelated } from '@/lib/queries/videos'
 
 export const revalidate = 300
@@ -20,7 +21,7 @@ type Props = { params: Promise<{ slug: string }> }
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const video = await getVideoBySlug((await params).slug)
-  if (!video || video.status !== 'published') return { title: 'Video not found' }
+  if (!video || !isPubliclyVisible(video)) return { title: 'Video not found' }
 
   const description = video.description?.slice(0, 160) ?? `Watch ${video.title} free.`
 
@@ -47,7 +48,7 @@ export default async function WatchPage({ params }: Props) {
   const { slug } = await params
   const video = await getVideoBySlug(slug)
 
-  if (!video || video.status !== 'published') notFound()
+  if (!video || !isPubliclyVisible(video)) notFound()
 
   const episode = await getEpisodeContext(video.id)
 

@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 import { db, videos, videoVariants } from '@/db'
+import { isPubliclyVisible } from '@/lib/queries/visibility'
 import { getVideoProvider, issuePlaybackToken, playbackCookieOptions } from '@/lib/video'
 
 export const dynamic = 'force-dynamic'
@@ -34,7 +35,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
 
   // 'ready' means transcoded but not published. Only an operator action makes
   // something public, so an unpublished video must not be playable by URL.
-  if (video.status !== 'published') {
+  if (!isPubliclyVisible(video)) {
     return NextResponse.json({ error: 'not_available', status: video.status }, { status: 404 })
   }
 
