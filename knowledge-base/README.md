@@ -83,8 +83,8 @@ knowledge-base/         This directory
 | Repo         | https://github.com/Mrluciferxd/streaming-platform  |
 | Prod URL     | https://streaming-platform-red.vercel.app          |
 | DB           | Neon Postgres 17, project `streaming-platform`     |
-| CI/CD        | None yet — deploys are manual from the CLI         |
-| Test Command | `npm test` (77 tests), `npm run smoke -- <url>`    |
+| CI/CD        | GitHub Actions on Node 22 — `tsc --noEmit` + `npm test` (no `CHECK_STRICT` yet); deploys manual from the CLI |
+| Test Command | `npm test` (87 tests), `npm run smoke -- <url>`    |
 
 ## Reading Order
 
@@ -100,8 +100,9 @@ knowledge-base/         This directory
 | [video-pipeline.md](video-pipeline.md)               | Upload, transcode, HLS                |
 | [auth.md](auth.md)                                   | Sessions, passwords, roles            |
 | [analytics.md](analytics.md)                         | Telemetry, rollups, trending          |
-| [database.md](database.md)                           | Schema, migrations, partitioning      |
+| [database.md](database.md)                           | Schema, migrations, partitioning       |
 | [admin.md](admin.md)                                 | Operator surface                      |
+| [series.md](series.md)                               | Series, episodes, the join             |
 | [ads.md](ads.md)                                     | Monetisation                          |
 | [player.md](player.md)                               | Playback, ABR, resume                 |
 | [changelog.md](changelog.md)                         | Tracing a regression                  |

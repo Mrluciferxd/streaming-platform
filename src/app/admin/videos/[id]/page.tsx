@@ -9,7 +9,9 @@ import {
   AGE_RATING_LABELS,
   AGE_RATINGS,
   getAdminVideo,
+  getEpisodeForVideo,
   listAdminCategories,
+  listAdminSeries,
   listAuditLog,
 } from '@/lib/queries/admin'
 
@@ -27,7 +29,12 @@ export default async function AdminVideoPage({ params }: { params: Promise<{ id:
   const video = await getAdminVideo(id)
   if (!video) notFound()
 
-  const [categories, audit] = await Promise.all([listAdminCategories(), listAuditLog(25, id)])
+  const [categories, audit, episode, allSeries] = await Promise.all([
+    listAdminCategories(),
+    listAuditLog(25, id),
+    getEpisodeForVideo(id),
+    listAdminSeries(),
+  ])
 
   const scheduled =
     video.status === 'ready' && video.publishedAt && video.publishedAt.getTime() > Date.now()
@@ -74,6 +81,18 @@ export default async function AdminVideoPage({ params }: { params: Promise<{ id:
             scheduledFor: scheduled,
             categoryIds: video.categoryIds,
           }}
+          seriesLink={
+            episode
+              ? {
+                  episodeId: episode.episodeId,
+                  seriesId: episode.seriesId,
+                  seriesTitle: episode.seriesTitle,
+                  seasonNo: episode.seasonNo,
+                  episodeNo: episode.episodeNo,
+                }
+              : null
+          }
+          allSeries={allSeries.map((s) => ({ id: s.id, title: s.title }))}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           ratings={AGE_RATINGS.map((value) => ({ value, label: AGE_RATING_LABELS[value] }))}
         />

@@ -33,6 +33,7 @@
     "seed:video": "tsx --env-file-if-exists=.env.local scripts/seed-video.ts",
     "check:analytics": "tsx --env-file-if-exists=.env.local scripts/check-analytics.ts",
     "check:history": "node --import tsx --env-file-if-exists=.env.local --test scripts/check-history.ts",
+    "check:series-admin": "node --import tsx --env-file-if-exists=.env.local --test scripts/check-series-admin.ts",
     "seed:demo": "tsx --env-file-if-exists=.env.local scripts/seed-demo.ts"
   },
   "dependencies": {

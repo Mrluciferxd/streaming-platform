@@ -1,10 +1,13 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 import {
   auditLog,
   categories,
   db,
+  episodes,
   jobs,
+  series,
   users,
   videoCategories,
   videoRetention,
@@ -513,6 +516,12 @@ export type AuditAction =
   | 'category.delete'
   | 'category.reorder'
   | 'job.retry'
+  | 'series.create'
+  | 'series.update'
+  | 'series.delete'
+  | 'episode.attach'
+  | 'episode.update'
+  | 'episode.detach'
 
 /**
  * Append a row to the compliance trail.
@@ -526,7 +535,7 @@ export async function recordAudit(
   entry: {
     actorId: string | null
     action: AuditAction
-    entityType: 'video' | 'category' | 'job'
+    entityType: 'video' | 'category' | 'job' | 'series' | 'episode'
     entityId?: string | null
     before?: unknown
     after?: unknown
@@ -581,3 +590,391 @@ export async function listAuditLog(
     .orderBy(desc(auditLog.id))
     .limit(Math.min(limit, 500))
 }
+
+// ---------------------------------------------------------------------------
+// Series and episodes
+// ---------------------------------------------------------------------------
+
+export type SeriesStatus = (typeof series.status.enumValues)[number]
+
+export const SERIES_STATUSES = series.status.enumValues
+
+export type AdminSeriesRow = {
+  id: string
+  slug: string
+  title: string
+  status: SeriesStatus
+  totalEpisodes: number | null
+  releaseYear: number | null
+  seasonLabel: string | null
+  studio: string | null
+  episodeCount: number
+  updatedAt: Date
+}
+
+/**
+ * Every series row, including ones with no published episodes yet.
+ *
+ * `episodeCount` counts every `episodes` row, not just the published ones,
+ * because the operator question here is "what is in this series" — a draft
+ * episode is still attached — and the public catalogue queries already hide
+ * unpublished rows from viewers.
+ */
+export async function listAdminSeries(): Promise<AdminSeriesRow[]> {
+  const rows = await db
+    .select({
+      id: series.id,
+      slug: series.slug,
+      title: series.title,
+      status: series.status,
+      totalEpisodes: series.totalEpisodes,
+      releaseYear: series.releaseYear,
+      seasonLabel: series.seasonLabel,
+      studio: series.studio,
+      updatedAt: series.updatedAt,
+      episodeCount: sql<number>`count(${episodes.id})::int`,
+    })
+    .from(series)
+    .leftJoin(episodes, eq(episodes.seriesId, series.id))
+    .groupBy(series.id)
+    .orderBy(desc(series.updatedAt), desc(series.id))
+
+  return rows
+}
+
+export type AdminSeriesDetail = {
+  id: string
+  slug: string
+  title: string
+  synopsis: string | null
+  posterPath: string | null
+  portraitPath: string | null
+  bannerPath: string | null
+  status: SeriesStatus
+  totalEpisodes: number | null
+  studio: string | null
+  releaseYear: number | null
+  seasonLabel: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export async function getAdminSeries(id: string): Promise<AdminSeriesDetail | null> {
+  const [row] = await db.select().from(series).where(eq(series.id, id)).limit(1)
+  if (!row) return null
+
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    synopsis: row.synopsis,
+    // Bucket-relative paths kept raw: the editor writes them back, so resolving
+    // to URLs here would be exactly the provider lock-in the path rule forbids.
+    posterPath: row.posterUrl,
+    portraitPath: row.portraitUrl,
+    bannerPath: row.bannerUrl,
+    status: row.status,
+    totalEpisodes: row.totalEpisodes,
+    studio: row.studio,
+    releaseYear: row.releaseYear,
+    seasonLabel: row.seasonLabel,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+/** Create a series row. Caller is responsible for the audit record. */
+export async function createAdminSeries(input: {
+  slug: string
+  title: string
+  synopsis?: string | null
+  status?: SeriesStatus
+  totalEpisodes?: number | null
+  studio?: string | null
+  releaseYear?: number | null
+  seasonLabel?: string | null
+}): Promise<{ id: string; slug: string }> {
+  const [row] = await db
+    .insert(series)
+    .values({
+      slug: input.slug,
+      title: input.title,
+      synopsis: input.synopsis?.trim() || null,
+      status: input.status ?? 'airing',
+      totalEpisodes: input.totalEpisodes ?? null,
+      studio: input.studio?.trim() || null,
+      releaseYear: input.releaseYear ?? null,
+      seasonLabel: input.seasonLabel?.trim() || null,
+    })
+    .returning({ id: series.id, slug: series.slug })
+
+  if (!row) throw new Error('series insert returned no row')
+  return row
+}
+
+/** Patch a series row. Caller is responsible for the audit record. */
+export async function updateAdminSeries(
+  id: string,
+  set: Partial<{
+    slug: string
+    title: string
+    synopsis: string | null
+    posterUrl: string | null
+    portraitUrl: string | null
+    bannerUrl: string | null
+    status: SeriesStatus
+    totalEpisodes: number | null
+    studio: string | null
+    releaseYear: number | null
+    seasonLabel: string | null
+  }>,
+): Promise<void> {
+  await db.update(series).set({ ...set, updatedAt: new Date() }).where(eq(series.id, id))
+}
+
+/** Delete a series row. Caller is responsible for the audit record. */
+export async function deleteAdminSeries(id: string): Promise<{ episodeCount: number }> {
+  const [count] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(episodes)
+    .where(eq(episodes.seriesId, id))
+
+  await db.delete(series).where(eq(series.id, id))
+  // CASCADE removes episodes rows; videos rows survive, which is the point —
+  // a series going away does not delete the episodes' media or watch history.
+
+  return { episodeCount: count?.count ?? 0 }
+}
+
+// ---------------------------------------------------------------------------
+// Episodes — the join rows
+// ---------------------------------------------------------------------------
+
+export type AdminEpisodeRow = {
+  id: string
+  videoId: string
+  seriesId: string
+  seasonNo: number
+  episodeNo: number
+  title: string | null
+  synopsis: string | null
+  thumbnailUrl: string | null
+  airedAt: Date | null
+  videoTitle: string
+  videoSlug: string
+  videoStatus: string
+}
+
+/** Every episode row of a series, in broadcast order, regardless of video status. */
+export async function listAdminEpisodes(seriesId: string): Promise<AdminEpisodeRow[]> {
+  const rows = await db
+    .select({
+      id: episodes.id,
+      videoId: episodes.videoId,
+      seriesId: episodes.seriesId,
+      seasonNo: episodes.seasonNo,
+      episodeNo: episodes.episodeNo,
+      title: episodes.title,
+      synopsis: episodes.synopsis,
+      thumbnailUrl: episodes.thumbnailUrl,
+      airedAt: episodes.airedAt,
+      videoTitle: videos.title,
+      videoSlug: videos.slug,
+      videoStatus: videos.status,
+    })
+    .from(episodes)
+    .innerJoin(videos, eq(videos.id, episodes.videoId))
+    .where(eq(episodes.seriesId, seriesId))
+    .orderBy(asc(episodes.seasonNo), asc(episodes.episodeNo))
+
+  return rows
+}
+
+export type EpisodeCandidate = {
+  id: string
+  slug: string
+  title: string
+  status: string
+  durationSec: number | null
+  /**
+   * The series this video is already attached to, if any. `null` when the video
+   * is a standalone title — those are the candidates the picker shows.
+   */
+  attachedSeriesId: string | null
+  attachedSeriesTitle: string | null
+}
+
+/**
+ * Videos that can be attached as an episode of a series.
+ *
+ * The exclusion is by the `episodes_video_key` unique index: a video belongs to
+ * at most one series, so a video with no `episodes` row is "free" and a video
+ * with one means the picker should say so and grey it out rather than silently
+ * move it by attaching it to a second series.
+ *
+ * A video already on *this* same series is excluded outright — the picker is
+ * for adding new episodes, not relisting existing ones.
+ *
+ * `hasMedia` (an HLS master) is not required: an operator can line up an
+ * episode before its transcode finishes — the public catalogue stays hidden
+ * until the video is published, which is what surface it lives on.
+ *
+ * The "attached-to" lookup is two correlated subqueries rather than a LEFT
+ * JOIN onto `episodes`, because the same `episodes` table is the very one the
+ * NOT EXISTS exclusion scans — a self-alias there is awkward in Drizzle, and a
+ * pair of small subqueries is also cheaper than a fan-out join a video would
+ * need to deduplicate.
+ */
+export async function listEpisodeCandidates(
+  seriesId: string,
+  query?: string,
+): Promise<EpisodeCandidate[]> {
+  // The two scalar subqueries in the select map and the NOT EXISTS in the
+  // where clause both reference the outer videos row. Drizzle's sql`` template
+  // interpolates `${v.id}` as the bare `"id"` column name inside select-map
+  // snippets (it does not carry the `from(v)` alias there), which is ambiguous
+  // against `episodes.id` and trips SQLSTATE 42702. The where-clause
+  // interpolation, by contrast, does emit the qualified `"v"."id"`. We keep
+  // `${v.id}` in the NOT EXISTS (it works) but hardcode `"v"."id"` in the two
+  // select subqueries where Drizzle drops the qualifier. Discovered by
+  // check-series-admin; never reached by typecheck (42702 surfaces only when
+  // the query actually runs against Postgres).
+  const v = alias(videos, 'v')
+
+  const clauses = [
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${episodes} e
+      WHERE e.video_id = ${v.id} AND e.series_id = ${seriesId}
+    )`,
+  ]
+
+  // Soft-deleted videos are still candidates: an operator re-using a taken-down
+  // video as an episode is unusual but not wrong, and the picker rendering a
+  // ghost row is a clearer signal than the row simply vanishing.
+  const trimmed = query?.trim()
+  if (trimmed) clauses.push(sql`${v.title} ILIKE ${`%${trimmed}%`}`)
+
+  const rows = await db
+    .select({
+      id: v.id,
+      slug: v.slug,
+      title: v.title,
+      status: v.status,
+      durationSec: v.durationSec,
+      attachedSeriesId: sql<string | null>`(
+        SELECT e.series_id FROM ${episodes} e
+        WHERE e.video_id = "v"."id"
+        LIMIT 1
+      )`,
+      // Resolved at read time rather than joined: the picker needs the title to
+      // say "Already on X" and nothing else, so a second scalar subquery costs
+      // less than carrying a whole series row.
+      attachedSeriesTitle: sql<string | null>`(
+        SELECT s.title
+        FROM ${episodes} e
+        JOIN ${series} s ON s.id = e.series_id
+        WHERE e.video_id = "v"."id"
+        LIMIT 1
+      )`,
+    })
+    .from(v)
+    .where(and(...clauses))
+    .orderBy(desc(v.updatedAt))
+    .limit(50)
+
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    status: row.status,
+    durationSec: row.durationSec,
+    attachedSeriesId: row.attachedSeriesId,
+    attachedSeriesTitle: row.attachedSeriesTitle,
+  }))
+}
+
+/** Attach a video to a series as an episode. Caller writes the audit row. */
+export async function attachEpisode(input: {
+  seriesId: string
+  videoId: string
+  seasonNo: number
+  episodeNo: number
+  title?: string | null
+  synopsis?: string | null
+  airedAt?: Date | null
+}): Promise<void> {
+  await db.insert(episodes).values({
+    seriesId: input.seriesId,
+    videoId: input.videoId,
+    seasonNo: input.seasonNo,
+    episodeNo: input.episodeNo,
+    title: input.title?.trim() || null,
+    synopsis: input.synopsis?.trim() || null,
+    airedAt: input.airedAt ?? null,
+  })
+}
+
+/** Patch an episode row. Caller writes the audit row. */
+export async function updateEpisode(
+  episodeId: string,
+  set: Partial<{
+    seasonNo: number
+    episodeNo: number
+    title: string | null
+    synopsis: string | null
+    airedAt: Date | null
+  }>,
+): Promise<void> {
+  await db.update(episodes).set(set).where(eq(episodes.id, episodeId))
+}
+
+/** Detach an episode from its series. Caller writes the audit row. */
+export async function detachEpisode(episodeId: string): Promise<void> {
+  await db.delete(episodes).where(eq(episodes.id, episodeId))
+}
+
+/**
+ * The episode a video belongs to, or null if it is a standalone title.
+ *
+ * Returns enough to populate the picker state in the video editor without a
+ * second round trip for the series title.
+ */
+export async function getEpisodeForVideo(
+  videoId: string,
+): Promise<{ episodeId: string; seriesId: string; seriesTitle: string; seasonNo: number; episodeNo: number } | null> {
+  const [row] = await db
+    .select({
+      episodeId: episodes.id,
+      seriesId: series.id,
+      seriesTitle: series.title,
+      seasonNo: episodes.seasonNo,
+      episodeNo: episodes.episodeNo,
+    })
+    .from(episodes)
+    .innerJoin(series, eq(series.id, episodes.seriesId))
+    .where(eq(episodes.videoId, videoId))
+    .limit(1)
+
+  return row ?? null
+}
+
+/**
+ * Rewrite a series' (season, episode) ordering en masse.
+ *
+ * Reordering a Greek chorus is a whole-array rewrite, not pairwise swaps: the
+ * new order is a sequence property, and swaps under concurrent edits race. The
+ * caller provides the full ordered list of episode ids per series; this writes
+ * them all in one transaction.
+ */
+export async function reorderEpisodes(
+  ordered: { episodeId: string; seasonNo: number; episodeNo: number }[],
+  executor: Executor = db,
+): Promise<void> {
+  for (const item of ordered) {
+    await executor
+      .update(episodes)
+      .set({ seasonNo: item.seasonNo, episodeNo: item.episodeNo })
+      .where(eq(episodes.id, item.episodeId))
+  }
+}
+

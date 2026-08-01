@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -27,6 +28,15 @@ export type EditorVideo = {
   categoryIds: string[]
 }
 
+export type EditorSeriesLink = {
+  episodeId: string
+  seriesId: string
+  seriesTitle: string
+  seasonNo: number
+  episodeNo: number
+}
+
+type SeriesOption = { id: string; title: string }
 type Option = { value: string; label: string }
 
 const ERRORS: Record<string, string> = {
@@ -36,14 +46,20 @@ const ERRORS: Record<string, string> = {
   restore_before_publishing: 'This title was taken down. Restore it first.',
   invalid_request: 'Some fields are not valid. Check the rating, score and portrait path.',
   not_found: 'Not found, or your session is no longer an operator session.',
+  slot_taken: 'That season/episode slot is already used in this series.',
+  already_attached: 'This video is already an episode of another series.',
 }
 
 export function VideoEditor({
   video,
+  seriesLink,
+  allSeries,
   categories,
   ratings,
 }: {
   video: EditorVideo
+  seriesLink: EditorSeriesLink | null
+  allSeries: SeriesOption[]
   categories: { id: string; name: string }[]
   ratings: Option[]
 }) {
@@ -56,6 +72,12 @@ export function VideoEditor({
   const [scheduleAt, setScheduleAt] = useState('')
   const [takedownReason, setTakedownReason] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Episode-picking state. Episode position defaults to the next slot after the
+  // series' current last episode when one is selected, so the operator does not
+  // have to look it up.
+  const [attachSeriesId, setAttachSeriesId] = useState('')
+  const [attachSeasonNo, setAttachSeasonNo] = useState('1')
+  const [attachEpisodeNo, setAttachEpisodeNo] = useState('1')
 
   async function send(url: string, method: string, body: unknown) {
     setBusy(true)
@@ -267,6 +289,129 @@ export function VideoEditor({
             {saved ? <span className="text-xs font-bold text-accent">Saved</span> : null}
           </div>
         </form>
+      </Panel>
+
+      <Panel
+        title="Series placement"
+        hint={
+          seriesLink
+            ? `Episode ${seriesLink.seasonNo}×${seriesLink.episodeNo} of ${seriesLink.seriesTitle}`
+            : 'A standalone title — not part of any series'
+        }
+      >
+        <div className="space-y-4 px-5 py-5">
+          {seriesLink ? (
+            <div className="space-y-3">
+              <p className="rounded-xl bg-secondary-soft px-3.5 py-2.5 text-xs font-semibold text-secondary">
+                Currently <strong>S{seriesLink.seasonNo}·E{seriesLink.episodeNo}</strong> of{' '}
+                <Link
+                  href={`/admin/series/${seriesLink.seriesId}`}
+                  className="underline hover:no-underline"
+                >
+                  {seriesLink.seriesTitle}
+                </Link>
+                .
+              </p>
+              <button
+                type="button"
+                className={button.ghost}
+                disabled={busy}
+                onClick={async () => {
+                  await send(`/api/admin/series/${seriesLink.seriesId}/episodes`, 'POST', {
+                    action: 'detach',
+                    episodeId: seriesLink.episodeId,
+                  })
+                }}
+              >
+                Detach from series
+              </button>
+              <p className="text-xs text-muted">
+                Detaching leaves the video in the library — its media, watch history and revenue attribution
+                all survive.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block flex-1 basis-72">
+                  <Label>Attach to series</Label>
+                  <select
+                    value={attachSeriesId}
+                    onChange={(event) => setAttachSeriesId(event.target.value)}
+                    className={field}
+                  >
+                    <option value="">— pick a series —</option>
+                    {allSeries.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <Label>Season</Label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={attachSeasonNo}
+                    onChange={(event) => setAttachSeasonNo(event.target.value)}
+                    className={`${field} w-20`}
+                  />
+                </label>
+                <label className="block">
+                  <Label>Episode</Label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={attachEpisodeNo}
+                    onChange={(event) => setAttachEpisodeNo(event.target.value)}
+                    className={`${field} w-24`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={button.primary}
+                  disabled={busy || !attachSeriesId}
+                  onClick={async () => {
+                    const ok = await send(`/api/admin/series/${attachSeriesId}/episodes`, 'POST', {
+                      action: 'attach',
+                      videoId: video.id,
+                      seasonNo: Number(attachSeasonNo),
+                      episodeNo: Number(attachEpisodeNo),
+                    })
+                    if (ok) {
+                      setAttachSeriesId('')
+                      setAttachSeasonNo('1')
+                      setAttachEpisodeNo('1')
+                    }
+                  }}
+                >
+                  Attach
+                </button>
+              </div>
+              {allSeries.length === 0 ? (
+                <p className="text-xs text-muted">
+                  No series exist yet — create one on the{' '}
+                  <Link href="/admin/series" className="hover:text-primary">
+                    Series
+                  </Link>{' '}
+                  page.
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-xl bg-primary-soft px-3.5 py-2.5 text-xs font-semibold text-primary"
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
       </Panel>
 
       <Panel

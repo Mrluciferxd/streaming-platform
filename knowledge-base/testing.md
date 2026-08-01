@@ -9,13 +9,14 @@ dependency. Assertions are `node:assert/strict`.
 
 | Command                        | What it runs                                        |
 |--------------------------------|-----------------------------------------------------|
-| `npm test`                     | Full suite — 77 tests, 18 suites                    |
+| `npm test`                     | Full suite — 87 tests, 19 suites                    |
 | `npm run check:ladder`         | ABR rung selection across aspect ratios (pure)      |
 | `npm run check:slug`           | URL slugs, including Indic scripts (pure)           |
 | `npm run check:queue`          | Job queue against a real Postgres                   |
 | `npm run check:rate-limit`     | Fixed-window counters against a real Postgres       |
 | `npm run check:sweep`          | Abandoned-upload sweeper, invokes the route handler |
 | `npm run check:history`        | Continue Watching band + write path                 |
+| `npm run check:series-admin`   | Series/episode CRUD + candidate picker (real PG)   |
 | `npm run check:analytics`      | Telemetry ingest → rollup (needs a running server)  |
 | `npm run check:token`          | App/Worker playback-token interop (needs a server)  |
 | `npm run check:r2`             | Full VideoProvider contract (needs R2 credentials)  |
