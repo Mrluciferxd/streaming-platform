@@ -23,26 +23,17 @@ next CI action item once that secret exists. `npm run lint` is broken on this
 Next 16 install — no ESLint config — and is a pre-existing condition.
 
 **Deployed**: https://streaming-platform-red.vercel.app — last deployed commit
-`0e5de8e`. **The series admin surface (`2dade27`), the reorder fix
-(`8107550`), and the account dashboard (uncommitted as of this line) are all
-on `origin/main` but NOT deployed.** Two commits are pushed-and-undeployed;
-the dashboard is local-only until committed.
+`9a9a84c` (this session's three commits are now live: `2dade27` series admin +
+CI, `8107550` reorder fix, `9a9a84c` account dashboard). Smoke suite 37/37
+green against the production deployment.
 
 ## In Progress
 
-The **account dashboard (`/me`)** is built, typechecks, suite green, and
-curl-verified (renders profile + all four sections server-side; redirect
-behaviour correct). Not yet given a full visual pass in a browser by the
-operator, nor committed.
-
-The **series/episodes admin API surface** is verified end-to-end this
-session (create/attach/detach/update/reorder/candidate-picker, both 409s
-`already_attached` + `slot_taken`, the cyclic-reorder fix). The **React
-rendering** of that surface (SeriesManager, SeriesEditor, episode picker,
-reorder arrows, VideoEditor "Series placement" panel) has been reasoned about
-but NOT exercised in a browser — the API path is green, the UI path is not.
-A user-side 404 against `/admin/series` turned out to be dev cache + cookie
-not set (the admin gate deliberately 404s non-operators), not a code defect.
+Nothing in-flight. This session's three commits are pushed, CI green, and
+deployed (`2dade27` series admin + CI, `8107550` reorder fix, `9a9a84c`
+account dashboard). The series admin API surface is verified end-to-end and
+the React rendering was given a visual browser pass before deploy; the
+account dashboard was curl-verified and visually checked.
 
 ## Blocked On
 
@@ -71,37 +62,29 @@ not set (the admin gate deliberately 404s non-operators), not a code defect.
 
 ## Next Steps
 
-1. **Commit + push the account dashboard (`/me`)** — built and curl-verified,
-   KB entries written; commit, push, confirm CI green.
-2. **Visually verify `/me` and `/admin/series` in the browser**, then deploy.
-   Series/episodes admin API is verified E2E this session (the reorder 500
-   was found and fixed); only the React rendering of `/admin/series` and a
-   full visual check of `/me` remain before `vercel --prod`. Two commits are
-   already on `origin/main` but undeployed (`2dade27` series admin + CI,
-   `8107550` reorder fix).
-3. Provision R2 and run `npm run check:r2`. This closes the largest
+1. Provision R2 and run `npm run check:r2`. This closes the largest
    verification gap and lets the demo stop serving media through the
    platform.
-4. Add a `DATABASE_URL` repo secret and flip CI to `npm test --CHECK_STRICT=1`.
+2. Add a `DATABASE_URL` repo secret and flip CI to `npm test --CHECK_STRICT=1`.
    Today CI skips every DB-dependent check via `unmet()`; that is the gate to
    the suite actually running in CI rather than skipping.
-5. Add a browser test harness. The player is the biggest untested surface —
+3. Add a browser test harness. The player is the biggest untested surface —
    see [player.md](player.md).
-6. ~~Set up CI~~ **Done**. `.github/workflows/ci.yml` runs
+4. ~~Set up CI~~ **Done**. `.github/workflows/ci.yml` runs
    `npm ci`, `tsc --noEmit`, `npm test` on Node 22 (without `CHECK_STRICT`).
-7. ~~Add an admin-side integration check — `scripts/check-series-admin.ts`~~
+5. ~~Add an admin-side integration check — `scripts/check-series-admin.ts`~~
    **Done**. Wired as `check:series-admin`; suite now 103 pass with the dev
    server up.
-8. ~~Replace the seeded FFmpeg test patterns with real key art.~~ **Done** in
+6. ~~Replace the seeded FFmpeg test patterns with real key art.~~ **Done** in
    commit `2b3c4ec` (generated key visuals + Ken Burns footage, verified
    against a production build). Left struck through so the prior plan is
    traceable.
-9. Comments and ratings (plan §7 v2) — tables exist, unused. User declined
+7. Comments and ratings (plan §7 v2) — tables exist, unused. User declined
    comments UI + ratings UI this session in favour of the account dashboard.
-10. **Other admin gaps** that remain after this session (see `admin.md`):
-    IT-Rules grievance/reports queue (`reports` table is scaffolding with no
-    UI), user/account management, comment moderation, creator & payouts
-    surface, per-video analytics drill-down.
+8. **Other admin gaps** that remain after this session (see `admin.md`):
+   IT-Rules grievance/reports queue (`reports` table is scaffolding with no
+   UI), user/account management, comment moderation, creator & payouts
+   surface, per-video analytics drill-down.
 
 ## Do Not Touch
 
