@@ -2,6 +2,35 @@
 
 Newest first.
 
+## 2026-08-02 — Ratings / reactions UI (like + dislike)
+**What**: New `/api/reactions` route (GET counts, POST set, DELETE clear)
+and a `Reactions` client component on the watch page below the title meta.
+Like/dislike with toggle-off (second tap on the active type clears the
+reaction), flip (tap on the opposite type updates the existing row — the
+`reactions` PK is `(user_id, video_id)` and `onConflictDoUpdate` overwrites
+`type`), optimistic UI with rollback on failure.
+**Why**: The `reactions` table existed in the schema with no API or UI —
+a documented "remaining" build item. Like counts are social proof a search
+result benefits from, but per-viewer state should not gate a public page's
+server render, so the component hydrates its own state on the client.
+**Impact**: Anonymous viewers see aggregate counts only; signing in unlocks
+the buttons. A signed-out tap routes to `/account?next=<this page>` rather
+than interrupting with a modal.
+**Files Changed**:
+- New: `src/lib/queries/reactions.ts` (`getReactionCounts`, `getUserReaction`,
+  `setReaction`, `clearReaction`, `videoIsRatable`)
+- New: `src/app/api/reactions/route.ts` (GET/POST/DELETE; anonymous GET ok,
+  POST/DELETE require session; 404 on unratable/unpublished video)
+- New: `src/components/Reactions.tsx` (client; fetches its own state on
+  mount, optimistic on click, rollback + flinch on failure)
+- Modified: `src/app/watch/[slug]/page.tsx` (mounts `<Reactions videoId=…>`
+  below the metadata row)
+**Tests**: `npm test` 103 pass, 0 fail. `npx tsc --noEmit` clean. Verified
+E2E: anonymous GET → counts only; like → flip-to-dislike → DELETE → unauth
+POST 401. The flip is a single UPDATE (verified the DB after each step),
+not a delete+insert.
+**Commit**: pending
+
 ## 2026-08-02 — Account dashboard page (/me)
 **What**: New `/me` route — a single signed-in-viewer hub showing the profile
 header (avatar initial, display name, masked email, "member since"), a

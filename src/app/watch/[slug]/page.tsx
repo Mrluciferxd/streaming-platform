@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 
 import { EpisodeList } from '@/components/EpisodeList'
 import { WatchPlayer } from '@/components/player/WatchPlayer'
+import { Reactions } from '@/components/Reactions'
 import { TitleCard } from '@/components/TitleCard'
 import { formatRating, formatRuntime, languageLabel } from '@/lib/format'
 import { getEpisodeContext } from '@/lib/queries/series'
@@ -146,6 +147,13 @@ export default async function WatchPage({ params }: Props) {
               </Link>
             ))}
           </div>
+
+          {/*
+            Like / dislike. The component fetches its own state on the client
+            so the watch page stays statically renderable for organic search —
+            a per-viewer reaction is not part of the HTML a crawler sees.
+          */}
+          <Reactions videoId={video.id} />
 
           {/*
             The same affordance the player offers when the episode ends, present
