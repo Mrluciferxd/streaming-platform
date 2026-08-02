@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { db } from '@/db'
 import { requireAdminApi } from '@/lib/auth/require-role'
 import { clientIp } from '@/lib/auth/session'
 import { getAdminSeries, recordAudit, reorderEpisodes } from '@/lib/queries/admin'
@@ -42,19 +43,41 @@ export async function POST(request: Request, { params }: Params) {
     return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 })
   }
 
-  await reorderEpisodes(parsed.data.order.map((item) => ({
+  // The zod schema validates the shape but not that the (season, episode)
+  // pairs in the new order are distinct. Two rows assigned the same slot
+  // would violate episodes_series_season_ep_key no matter how the writes are
+  // sequenced, so reject that up front with the same 409 the single-update
+  // attach path returns, rather than letting it surface as a 500.
+  const keys = new Set(
+    parsed.data.order.map((item) => `${item.seasonNo}:${item.episodeNo}`),
+  )
+  if (keys.size !== parsed.data.order.length) {
+    return Response.json(
+      { error: 'slot_taken', detail: 'Two episodes are assigned the same season/episode slot.' },
+      { status: 409 },
+    )
+  }
+
+  const ordered = parsed.data.order.map((item) => ({
     episodeId: item.episodeId,
     seasonNo: item.seasonNo,
     episodeNo: item.episodeNo,
-  })))
+  }))
 
-  await recordAudit({
-    actorId: gate.user.id,
-    action: 'episode.update',
-    entityType: 'series',
-    entityId: id,
-    after: { reordered: parsed.data.order.length },
-    ip: clientIp(request),
+  await db.transaction(async (tx) => {
+    await reorderEpisodes(ordered, tx)
+
+    await recordAudit(
+      {
+        actorId: gate.user.id,
+        action: 'episode.update',
+        entityType: 'series',
+        entityId: id,
+        after: { reordered: parsed.data.order.length },
+        ip: clientIp(request),
+      },
+      tx,
+    )
   })
 
   return Response.json({ ok: true, reordered: parsed.data.order.length })

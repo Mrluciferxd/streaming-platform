@@ -965,11 +965,39 @@ export async function getEpisodeForVideo(
  * new order is a sequence property, and swaps under concurrent edits race. The
  * caller provides the full ordered list of episode ids per series; this writes
  * them all in one transaction.
+ *
+ * Two-phase update: the `(series_id, season_no, episode_no)` triplet has a
+ * UNIQUE index, so writing the final slots directly trips `episodes_series_
+ * season_ep_key` mid-loop — moving E99 onto E1 collides with E1's row before
+ * E1 has been moved off. Plain seasons reorder sidesteps this because
+ * `categories.sort_order` is a plain integer with no unique constraint, but
+ * episodes carry a real unique key, so a naive loop fails.
+ *
+ * Phase 1 parks every row on a throwaway `episode_no` derived from its index
+ * in the new order (a band well above any episode_no the schema accepts —
+ * zod caps at 9999, smallint tops out at 32767, so 30000+i is safe and
+ * distinct per row), satisfying the `episode_no > 0` CHECK and keeping the
+ * triplets unique while the real targets are still occupied. Phase 2 writes
+ * the final `(season_no, episode_no)` now that the colliding slots are empty.
+ *
+ * The route wraps both phases in a single transaction and passes the `tx`
+ * here, so a failure in either phase rolls every row back to its old slot.
  */
+const REORDER_PARK_BAND = 30000
+
 export async function reorderEpisodes(
   ordered: { episodeId: string; seasonNo: number; episodeNo: number }[],
   executor: Executor = db,
 ): Promise<void> {
+  for (let i = 0; i < ordered.length; i++) {
+    const item = ordered[i]
+    if (!item) continue
+    await executor
+      .update(episodes)
+      .set({ seasonNo: 1, episodeNo: REORDER_PARK_BAND + i })
+      .where(eq(episodes.id, item.episodeId))
+  }
+
   for (const item of ordered) {
     await executor
       .update(episodes)

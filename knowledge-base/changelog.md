@@ -2,6 +2,41 @@
 
 Newest first.
 
+## 2026-08-01 — Fix reorder tripping episodes_series_season_ep_key
+**What**: The `POST /api/admin/series/[id]/reorder` endpoint returned 500 on
+cyclic slot swaps (e.g. swap E1↔E99). `reorderEpisodes` updated rows one at a
+time, so writing E99 onto the `(1,1)` slot collided with E1's row before E1
+had been moved off — `episodes_series_season_ep_key` fired mid-loop. The route
+also wasn't wrapping the rewrite in a transaction.
+**Why**: Discovered by manual API verification during the session that shipped
+the series admin surface. The categories reorder sidesteps this because
+`categories.sort_order` is a plain integer with no unique constraint; episodes
+carry a real unique key on `(series_id, season_no, episode_no)`, so a naive
+sequential rewrite is unsafe for any reorder that moves a row onto a slot
+another row still occupies. Covers the case `check-series-admin` does not
+(the check exercises attach/detach/update but not a full reorder with cycles).
+**Impact**: Reorder now succeeds for arbitrary renumbering. Two fix pieces:
+(a) `reorderEpisodes` does a two-phase update within the caller's transaction —
+phase 1 parks every row on a throwaway `episode_no` in a high band
+(`30000 + i`, safely above the zod-capped 9999 and below the smallint ceiling
+of 32767, distinct per row by index, and still `> 0` to satisfy the column
+CHECK), phase 2 writes the final slots once the colliding slots are empty.
+(b) The route now wraps both phases + the audit row in a single
+`db.transaction`, and pre-rejects a request whose new order contains duplicate
+`(season, episode)` pairs as 409 `slot_taken` (matching the single-update
+attach path) instead of letting it surface as a 500 from phase 2.
+**Files Changed**:
+- Modified: `src/lib/queries/admin.ts` (`reorderEpisodes` two-phase)
+- Modified: `src/app/api/admin/series/[id]/reorder/route.ts` (tx wrap +
+  duplicate-slot pre-check)
+**Tests**: `npm test` 103 pass, 0 fail (the local server being up enabled the
+analytics + token suites, which skip otherwise; DB-dependent checks all pass).
+`npx tsc --noEmit` clean. Re-verified end-to-end via the API: cyclic
+E1↔E99 reorder now returns 200 and the episode list reflects the new order; a
+reorder request with two rows targeting the same slot returns 409
+`slot_taken` with a human-readable `detail`.
+**Commit**: pending
+
 ## 2026-07-31 — Series & episodes admin surface
 **What**: New `/admin/series` list + new-series form, `/admin/series/[id]` editor
 with ordered episode list and add-episode picker, and a "Series placement"
