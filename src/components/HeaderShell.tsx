@@ -133,23 +133,25 @@ export function HeaderShell({
           {user ? (
             <div className="flex items-center gap-2">
               <Link
+                href="/me"
+                className="hidden text-sm font-semibold text-ink-soft transition hover:text-primary sm:block"
+              >
+                Account
+              </Link>
+              <Link
                 href="/my-list"
                 className="hidden text-sm font-semibold text-ink-soft transition hover:text-primary sm:block"
               >
                 My List
               </Link>
-              <button
-                type="button"
-                onClick={async () => {
-                  await fetch('/api/auth/login', { method: 'DELETE', credentials: 'same-origin' })
-                  router.refresh()
-                }}
-                title={`Signed in as ${user.displayName} — sign out`}
-                aria-label="Sign out"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-xs font-extrabold text-white shadow-sm ring-2 ring-white"
+              <Link
+                href="/me"
+                title={`Signed in as ${user.displayName} — open your account`}
+                aria-label="Your account"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-xs font-extrabold text-white shadow-sm ring-2 ring-white transition hover:-translate-y-0.5"
               >
                 {user.displayName.slice(0, 1).toUpperCase()}
-              </button>
+              </Link>
             </div>
           ) : (
             <Link

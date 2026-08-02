@@ -2,6 +2,43 @@
 
 Newest first.
 
+## 2026-08-02 — Account dashboard page (/me)
+**What**: New `/me` route — a single signed-in-viewer hub showing the profile
+header (avatar initial, display name, masked email, "member since"), a
+Continue Watching rail, a My List grid with a "See all" link to `/my-list`,
+and a Recently Watched list (with progress % or "Finished" and a date per
+row). The header now shows an "Account" link for signed-in users, and the
+avatar circle links to `/me` instead of silently signing the viewer out —
+sign-out is now an explicit button on `/me`.
+**Why**: A signed-in viewer had nowhere to land. `/account` is the sign-in form
+and redirects signed-in users to `/`; the only viewer surface was `/my-list`.
+There was no hub for "my own data" — continue watching, my list, history,
+sign-out — even though every underlying read existed. The dashboard composes
+those reads into one page with no new tables and no new API routes.
+**Impact**: A viewer signing in lands on a single page that surfaces everything
+about their account. Sign-out is no longer a surprise avatar click (it dropped
+your session with no confirmation); it's a labelled button on `/me`. The
+header avatar now navigates instead of destroying state.
+**Files Changed**:
+- New: `src/app/me/page.tsx` (the dashboard; `force-dynamic`, `robots noindex`,
+  redirect to `/account?next=%2Fme` when not signed in — matching the `/my-list`
+  convention)
+- New: `src/app/me/SignOutButton.tsx` (client button; DELETEs the session and
+  hard-navigates to `/` so no stale server-component tree remains)
+- Modified: `src/lib/queries/history.ts` (new `listRecentHistory` — recently
+  watched including finished titles; `listContinueWatching` deliberately hides
+  completed rows so the resume rail stays uncluttered, but the dashboard wants
+  the full recency stream)
+- Modified: `src/components/HeaderShell.tsx` (added "Account" link next to
+  "My List" for signed-in users; avatar now links to `/me` instead of signing
+  out on click)
+**Tests**: `npm test` 103 pass, 0 fail. `npx tsc --noEmit` clean. Verified
+via curl: `/me` with a session returns 200 and renders all four sections plus
+the profile; without a session it 307-redirects to `/account?next=%2Fme`.
+`maskEmail` reveals only the first character of the local part so the full
+address does not sit in an HTML response.
+**Commit**: pending
+
 ## 2026-08-01 — Fix reorder tripping episodes_series_season_ep_key
 **What**: The `POST /api/admin/series/[id]/reorder` endpoint returned 500 on
 cyclic slot swaps (e.g. swap E1↔E99). `reorderEpisodes` updated rows one at a

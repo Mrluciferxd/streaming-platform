@@ -104,6 +104,73 @@ export async function listContinueWatching(
 }
 
 /**
+ * Recently watched titles, including finished ones.
+ *
+ * `listContinueWatching` is the resume rail — it hides anything past the
+ * 95% mark and anything below the resume floor. The account dashboard wants
+ * the full recency stream: a title a viewer finished last night belongs there
+ * even though it does not belong on the resume rail, and a title they
+ * scrubbed past the floor but did not finish belongs on the resume rail and
+ * here alike. Hence a separate read rather than a flag on the existing one.
+ *
+ * `completed` is returned so the dashboard can mark a finished row without
+ * re-deriving it from the progress fraction (the catalogue duration could be
+ * null for a video still transcoding, and the band filter above is the only
+ * thing keeping a 100%-of-unknown-duration row honest).
+ */
+export type RecentHistoryItem = ContinueWatchingItem & {
+  completed: boolean
+}
+
+export async function listRecentHistory(
+  userId: string,
+  limit = 20,
+): Promise<RecentHistoryItem[]> {
+  const rows = await db
+    .select({
+      id: videos.id,
+      slug: videos.slug,
+      title: videos.title,
+      posterUrl: videos.posterUrl,
+      portraitUrl: videos.portraitUrl,
+      durationSec: videos.durationSec,
+      ageRating: videos.ageRating,
+      hasSub: videos.hasSub,
+      hasDub: videos.hasDub,
+      seasonLabel: videos.seasonLabel,
+      score: videos.score,
+      positionSec: watchHistory.positionSec,
+      watchedAt: watchHistory.watchedAt,
+      completed: watchHistory.completed,
+    })
+    .from(watchHistory)
+    .innerJoin(videos, eq(videos.id, watchHistory.videoId))
+    .where(and(eq(watchHistory.userId, userId), publiclyVisible))
+    .orderBy(desc(watchHistory.watchedAt))
+    .limit(limit)
+
+  const provider = await getVideoProvider()
+
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    posterUrl: row.posterUrl ? provider.publicUrl(row.posterUrl) : null,
+    portraitUrl: row.portraitUrl ? provider.publicUrl(row.portraitUrl) : null,
+    durationSec: row.durationSec,
+    ageRating: row.ageRating,
+    hasSub: row.hasSub,
+    hasDub: row.hasDub,
+    seasonLabel: row.seasonLabel,
+    score: row.score,
+    positionSec: row.positionSec,
+    watchedAt: row.watchedAt,
+    completed: row.completed,
+    progress: row.durationSec ? Math.min(1, row.positionSec / row.durationSec) : 0,
+  }))
+}
+
+/**
  * Record a playback position.
  *
  * The catalogue duration wins over whatever the client reported. GET computes
