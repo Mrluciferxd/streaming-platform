@@ -8,4 +8,11 @@ dist
 # Sample media IS uploaded: it is gitignored so it never enters the repo, but a
 # demo deploy needs something to play. Delete this file's exception and set
 # VIDEO_PROVIDER=r2 for anything real.
-!public/media
+#
+# The parent directory is gitignored (.gitignore:26 `public/media`), so a bare
+# `!public/media` re-includes only the directory entry, not its children — git's
+# "cannot re-include a file whose parent dir is excluded" rule. Both lines are
+# needed: the first re-opens the directory, the second re-includes its
+# contents. Verified necessary after media 404'd on a CLI deploy.
+!public/media/
+!public/media/**
