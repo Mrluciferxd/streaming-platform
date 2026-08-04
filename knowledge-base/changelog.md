@@ -2,6 +2,47 @@
 
 Newest first.
 
+## 2026-08-04 — Comments UI (one-level thread, optimistic post)
+**What**: New `/api/comments` route (GET thread, POST top-level or reply) and
+a `Comments` client component on the watch page below the related-titles
+aside. One level of threading (top-level + replies, no deeper nesting) —
+the UI is flat-by-design and the API rejects a `parentId` that is not a
+top-level comment (`invalid_parent` 400). Posting is optimistic with a
+rollback-on-refresh; a 401 routes to `/account?next=<this page>` rather than
+interrupting with a modal (same pattern as `Reactions`).
+**Why**: The `comments` table existed in the schema with no API or UI — a
+documented "remaining" build item. Anonymous reads are open (a lively thread
+is social proof and is what a search engine picks up); posting requires a
+session.
+**Impact**: The watch page now surface a per-video thread. The component
+hydrates the thread on the client so the watch page stays statically
+renderable (a per-viewer thread is not part of the cached HTML) and the
+cache survives a CDN front without per-viewer state baked in.
+**Bug fixed in-flight**: `listComments`'s reply query used a raw
+`sql\`${comments.parentId} = any(${topIds})\`` — a JS array passed as a
+single string parameter trips Postgres 22P02 "malformed array literal" the
+moment any top-level comment exists. Replaced with `inArray(col, topIds)`,
+which binds as `= ANY($1::uuid[])`. Verified E2E:
+- GET empty thread 200; GET with comments 200; GET anonymous 200 (public reads).
+- POST top-level 200; POST reply 200; POST reply-to-reply → `invalid_parent`
+  400; POST bogus parent UUID → `invalid_parent` 400; POST to non-existent
+  video → `not_found` 404; POST unauth → 401; POST empty/missing/bad-typed
+  body → `invalid_request` 400; GET bad/missing videoId → 400.
+**Files Changed**:
+- New: `src/lib/queries/comments.ts` (`listComments` two-query assembly,
+  `createComment`, `videoIsCommentable`)
+- New: `src/app/api/comments/route.ts` (GET `public, max-age=30,
+  stale-while-revalidate=600`; POST auth + commentable guard + parent
+  validation)
+- New: `src/components/Comments.tsx` (client; hydrates on mount, optimistic
+  submit, one-reply-box-at-a-time)
+- Modified: `src/app/watch/[slug]/page.tsx` (mounts `<Comments videoId=…>`
+  in a `max-w-4xl` block below the main/aside grid)
+**Tests**: `npm test` 103 pass, 0 fail. `npx tsc --noEmit` clean. E2E
+verified against the dev server with a minted admin-test session (15 cases);
+test rows + session deleted, admin-test password re-randomized after.
+**Commit**: pending
+
 ## 2026-08-04 — Fix: demo media 404 on production (.vercelignore re-include miss)
 **What**: `.vercelignore` changed from `!public/media` to
 `!public/media/` + `!public/media/**`. Redeployed to production; media now

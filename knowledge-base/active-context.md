@@ -38,11 +38,16 @@ mechanics that broke and the fix).
 
 ## In Progress
 
-Nothing in-flight. This session's three commits are pushed, CI green, and
-deployed (`2dade27` series admin + CI, `8107550` reorder fix, `9a9a84c`
-account dashboard). The series admin API surface is verified end-to-end and
-the React rendering was given a visual browser pass before deploy; the
-account dashboard was curl-verified and visually checked.
+## In Progress
+
+The comments build (Build 2 of 4) is committed this session: `/api/comments`
+(GET thread / POST top-level or reply) + `Comments` client component on the
+watch page. E2E-verified (15 cases incl. the `inArray` fix for the 22P02
+malformed-array-literal regression). Service surface complete; remaining
+build items are Build 3 (reports queue) and Build 4 (admin user management).
+The series admin API surface is verified end-to-end and the React rendering
+was given a visual browser pass before deploy; the account dashboard was
+curl-verified and visually checked.
 
 ## Blocked On
 

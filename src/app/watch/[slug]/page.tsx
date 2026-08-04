@@ -3,6 +3,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { Comments } from '@/components/Comments'
 import { EpisodeList } from '@/components/EpisodeList'
 import { WatchPlayer } from '@/components/player/WatchPlayer'
 import { Reactions } from '@/components/Reactions'
@@ -250,6 +251,16 @@ export default async function WatchPage({ params }: Props) {
             </>
           )}
         </aside>
+      </div>
+
+      {/*
+        Comments. The component hydrates the thread on the client so the
+        watch page renders statically (a per-viewer thread is not part of the
+        cached HTML) and the cache survives a CDN front without per-viewer
+        state baked in.
+      */}
+      <div className="mx-auto mt-12 max-w-4xl">
+        <Comments videoId={video.id} />
       </div>
     </div>
   )
