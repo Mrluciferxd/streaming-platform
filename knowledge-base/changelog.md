@@ -2,6 +2,26 @@
 
 Newest first.
 
+## 2026-08-04 — Fix: demo media 404 on production (.vercelignore re-include miss)
+**What**: `.vercelignore` changed from `!public/media` to
+`!public/media/` + `!public/media/**`. Redeployed to production; media now
+serves (portrait.png, master.m3u8, poster.jpg, _next/image proxy all 200).
+**Why**: `public/media` is gitignored (`.gitignore:26`). A lone `!public/media`
+re-includes the directory entry but not its children — git's "cannot
+re-include a file whose parent dir is excluded" rule kept the 85MB of demo
+media out of every CLI deploy, so `VIDEO_PROVIDER=local`'s `/media/...` paths
+404'd on production while the playback API returned them as 200 JSON.
+Documented as ISSUE-008.
+**Impact**: The deployed site now shows images and plays video. Verification:
+smoke 37/37, `curl -sI` on three media paths + the Next image proxy all
+return 200.
+**Files Changed**: `.vercelignore`; `knowledge-base/known-issues.md`
+(ISSUE-008 entry).
+**Tests**: smoke 37/37 against the new production deployment
+(`edy4kxgky`); `curl -sI` on `/media/v/<id>/portrait.png`,
+`/master.m3u8`, `/poster.jpg`, and `/_next/image?url=...` all 200.
+**Commit**: `7c2030c`
+
 ## 2026-08-02 — Ratings / reactions UI (like + dislike)
 **What**: New `/api/reactions` route (GET counts, POST set, DELETE clear)
 and a `Reactions` client component on the watch page below the title meta.

@@ -1,6 +1,6 @@
 ## Current Status
 
-**Last Updated**: 2026-08-02
+**Last Updated**: 2026-08-04
 **Last Agent Session**: (1) Shipped the series/episodes admin surface +
 `check-series-admin.ts` + CI workflow (commit `2dade27`). (2) Manual API
 verification caught and fixed a 500 in `POST /api/admin/series/[id]/reorder`
@@ -9,8 +9,12 @@ it as a two-phase update inside a transaction and added a duplicate-slot
 pre-check returning 409 `slot_taken` (commit `8107550`). (3) Built the
 account dashboard at `/me`: profile header, Continue Watching, My List,
 Recently Watched, with an explicit Sign-out button and header link changes
-(uncommitted). Net new viewer surface this session: `/me`. Net new operator
-surface: the whole series/episodes admin.
+(commit `9a9a84c`). (4) Ratings/reactions UI shipped (commit `6b9ab34`).
+(5) Fixed a high-severity deploy bug: demo media 404'd on production because
+`.vercelignore`'s lone `!public/media` did not re-include gitignored
+children; added `!public/media/` + `!public/media/**` (commit `7c2030c`,
+ISSUE-008). Net new viewer surface: `/me`. Net new operator surface: the
+whole series/episodes admin.
 
 **Test Suite Status**: 103 pass, 0 fail (`npm test`) with the dev server up
 (the analytics + token suites need a live `localhost:3000`; without it the
@@ -23,9 +27,14 @@ next CI action item once that secret exists. `npm run lint` is broken on this
 Next 16 install — no ESLint config — and is a pre-existing condition.
 
 **Deployed**: https://streaming-platform-red.vercel.app — last deployed commit
-`9a9a84c` (this session's three commits are now live: `2dade27` series admin +
-CI, `8107550` reorder fix, `9a9a84c` account dashboard). Smoke suite 37/37
-green against the production deployment.
+`7c2030c` (media fix, this session). All commits through `7c2030c` are live.
+The ratings commit `6b9ab34` was pushed and CI-green but NOT deployed as a
+standalone; it is included in the `7c2030c` deploy (CLI deploys upload the
+working tree, and `6b9ab34` was already on `main`). Smoke suite 37/37 green
+against the production deployment. `VIDEO_PROVIDER=local` +
+`ALLOW_LOCAL_MEDIA=1` are set in production env; media now serves (85MB of
+demo media ships with the deploy — see ISSUE-008 for the `.vercelignore`
+mechanics that broke and the fix).
 
 ## In Progress
 

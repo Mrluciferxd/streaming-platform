@@ -122,3 +122,30 @@ VAST tag.
 falls straight through to content.
 **Fix**: Configure GAM, then verify fill, frequency capping and the
 `ad_impression` / `ad_complete` telemetry against real inventory.
+
+## ISSUE-008: Demo media 404 on production — .vercelignore re-include miss
+
+**Status**: Resolved
+**Severity**: High
+**Discovered**: 2026-08-04
+**Resolved**: 2026-08-04
+**Symptom**: Images and video returned 404 on the production deploy
+(`streaming-platform-red.vercel.app`). The `/api/playback/[slug]` endpoint
+returned 200 with `masterUrl`/`posterUrl` pointing at `/media/v/...` paths
+(`VIDEO_PROVIDER=local`), but those paths 404'd. The homepage rendered with
+broken `<img>` (the `_next/image` proxy 404'd on the underlying file).
+**Root Cause**: `.vercelignore` had a lone `!public/media` to ship the
+gitignored demo media with CLI deploys. `public/media` is gitignored
+(`.gitignore:26`), and a negation re-includes only the named path — the
+directory entry — not its children. Git's "it is not possible to re-include a
+file if a parent directory of that file is excluded" rule kept the contents
+out; the CLI uploader honored `.gitignore` as default exclusions, so the
+directory uploaded empty.
+**Fix**: `.vercelignore` now reads `!public/media/` and `!public/media/**`
+— the first re-opens the directory, the second re-includes its contents.
+Verified: `portrait.png`, `master.m3u8`, `poster.jpg` and the `_next/image`
+proxy all return 200 on the post-fix production deploy; smoke 37/37.
+**Regression Test**: After any future change to `.vercelignore` or
+`.gitignore` touching `public/media`, redeploy and `curl -sI` one portrait
+and one master.m3u8 against the new deployment URL.
+**Commit**: `7c2030c`
