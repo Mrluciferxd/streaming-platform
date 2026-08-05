@@ -40,13 +40,18 @@ mechanics that broke and the fix).
 
 ## In Progress
 
-The comments build (Build 2 of 4) is committed this session: `/api/comments`
-(GET thread / POST top-level or reply) + `Comments` client component on the
-watch page. E2E-verified (15 cases incl. the `inArray` fix for the 22P02
-malformed-array-literal regression). Service surface complete; remaining
-build items are Build 3 (reports queue) and Build 4 (admin user management).
-The series admin API surface is verified end-to-end and the React rendering
-was given a visual browser pass before deploy; the account dashboard was
+Builds 2 and 3 of 4 are committed this session. Build 2 (comments):
+`/api/comments` (GET thread / POST top-level or reply) + `Comments` client
+component on the watch page — E2E-verified (15 cases incl. the `inArray`
+fix for the 22P02 malformed-array-literal regression). Build 3 (reports):
+public grievance intake at `POST /api/reports` + `ReportForm` on the
+`/legal/grievance` page, and admin triage queue at `/admin/reports` with
+`POST /api/admin/reports/[id]` enforcing the open -> reviewing ->
+(actioned | dismissed) state machine — E2E-verified (17 cases incl. the
+state-machine conflicts, non-admin 404, and validator rejections). Remaining
+build item: Build 4 (admin user management). The series admin API surface is
+verified end-to-end and the React rendering was given a visual browser pass
+before deploy; the account dashboard was
 curl-verified and visually checked.
 
 ## Blocked On

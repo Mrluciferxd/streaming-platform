@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { ReportForm } from '@/components/ReportForm'
+
 /**
  * Legal pages.
  *
@@ -195,7 +197,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function LegalPage({ params }: Props) {
-  const doc = DOCS[(await params).slug]
+  const { slug } = await params
+  const doc = DOCS[slug]
   if (!doc) notFound()
 
   return (
@@ -221,6 +224,10 @@ export default async function LegalPage({ params }: Props) {
         </section>
       ))}
 
+      {/* The grievance page carries the public intake form — the Rules require
+          a way to file, not just a contact address. */}
+      {slug === 'grievance' ? <ReportForm /> : null}
+
       <p className="mt-12 rounded-2xl bg-mist p-4 text-xs leading-relaxed text-muted">
         Every <code className="font-semibold">[bracketed]</code> value above is a blank that must be
         filled before launch, and the whole document needs review by a lawyer qualified in Indian
@@ -230,3 +237,4 @@ export default async function LegalPage({ params }: Props) {
     </article>
   )
 }
+

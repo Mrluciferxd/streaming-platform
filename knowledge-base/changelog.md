@@ -2,6 +2,66 @@
 
 Newest first.
 
+## 2026-08-04 — Grievance reports queue (IT Rules 2021 intake + triage)
+**What**: Public grievance intake (`POST /api/reports` + `ReportForm`
+component on the `/legal/grievance` page) and an admin triage queue at
+`/admin/reports` with a state machine enforced by `POST /api/admin/reports/:id`
+(review -> actioned | dismissed, with reopen). The `reports` table already
+existed in the schema with `due_at = now() + interval '15 days'` default and
+a partial index `reports_open_due_idx` on the open/reviewing statuses — the
+triage queue reads that index and shows an overdue count banner when any
+report has crossed the 15-day deadline.
+**Why**: The `reports` table existed in the schema with no API or UI — a
+documented "remaining" build item. The IT Rules 2021 mechanism is open: the
+Grievance Officer cannot refuse a complaint for want of an account, so the
+intake endpoint is unauthenticated and accepts a `reporter_email` for
+anonymous filers (a signed-in filer's `reporter_id` is recorded instead). A
+report targets a video, a comment, or neither (a general complaint); when a
+target is given it must be currently visible — a report on a taken-down video
+is redundant, a report on a hidden comment is already actioned.
+**Impact**: A consumer can file a grievance from `/legal/grievance` (the form
+replaces itself with an acknowledgement carrying the report id on success —
+immediate is better than the 24-hour acknowledgement the Rules require). An
+operator sees the queue at `/admin/reports` (new AdminNav tab "Grievances"),
+ordered by `due_at` with overdue past the deadline flagged first. Each report
+has inline controls: "Mark reviewing", "Action"/"Dismiss" (which open a
+resolution-note modal — the note becomes the record), and "Reopen" for a
+resolved report. The audit trail is the `reports` row itself
+(`resolution_note` + `resolved_at`), not `audit_log`.
+**State machine**: open -> reviewing -> (actioned | dismissed); reopen returns
+a terminal report to open. Enforced in the API: action/dismiss on a terminal
+report -> `already_resolved` 409; reopen on a non-terminal report ->
+`not_resolved` 409. A non-admin caller gets 404 (the operator-only surface
+convention — 404, never 403, so the admin panel is not a discoverable target).
+**Files Changed**:
+- New: `src/lib/queries/reports.ts` (`listOpenReports`, `getReport`,
+  `createReport`, `updateReportStatus`, `countOverdue`, `videoIsReportable`,
+  `commentIsReportable`)
+- New: `src/app/api/reports/route.ts` (public POST intake; anonymous or
+  signed-in; nothing_targeted / video_not_reportable / comment_not_reportable)
+- New: `src/app/api/admin/reports/[id]/route.ts` (admin POST triage; state
+  machine enforced; already_resolved / not_resolved conflicts)
+- New: `src/app/admin/reports/page.tsx` (server-rendered queue; reads the
+  partial index; overdue banner; ordered by `due_at`)
+- New: `src/app/admin/reports/ReportActions.tsx` (client; inline controls +
+  resolution-note modal; reloads on action)
+- New: `src/components/ReportForm.tsx` (public intake form; reason select,
+  detail textarea, optional email for anonymous filers; acknowledgement with
+  report id on success)
+- Modified: `src/app/admin/AdminNav.tsx` (added "Grievances" tab)
+- Modified: `src/app/legal/[slug]/page.tsx` (renders `<ReportForm />` on the
+  grievance page)
+- Modified: `knowledge-base/changelog.md`, `knowledge-base/active-context.md`
+**Tests**: `npm test` 103 pass, 0 fail. `npx tsc --noEmit` clean. E2E
+verified against the dev server (17 cases): anon intake, signed-in intake,
+nothing_targeted, bogus video, empty detail; admin page 200; review ->
+reviewing; action with note -> actioned; action on resolved -> already_resolved
+409; reopen -> open; reopen on non-resolved -> not_resolved 409; short/missing
+note -> invalid_request 400; dismiss with note -> dismissed; bogus report id
+-> 404; non-admin -> 404; bad action -> invalid_request 400. Test report
+rows + session deleted by id; admin-test password re-randomized after.
+**Commit**: pending
+
 ## 2026-08-04 — Comments UI (one-level thread, optimistic post)
 **What**: New `/api/comments` route (GET thread, POST top-level or reply) and
 a `Comments` client component on the watch page below the related-titles
