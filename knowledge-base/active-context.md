@@ -27,14 +27,18 @@ next CI action item once that secret exists. `npm run lint` is broken on this
 Next 16 install — no ESLint config — and is a pre-existing condition.
 
 **Deployed**: https://streaming-platform-red.vercel.app — last deployed commit
-`7c2030c` (media fix, this session). All commits through `7c2030c` are live.
-The ratings commit `6b9ab34` was pushed and CI-green but NOT deployed as a
-standalone; it is included in the `7c2030c` deploy (CLI deploys upload the
-working tree, and `6b9ab34` was already on `main`). Smoke suite 37/37 green
-against the production deployment. `VIDEO_PROVIDER=local` +
-`ALLOW_LOCAL_MEDIA=1` are set in production env; media now serves (85MB of
-demo media ships with the deploy — see ISSUE-008 for the `.vercelignore`
-mechanics that broke and the fix).
+`9ded7c5` (admin user management, this session). All four "remaining" builds
+are live: ratings `6b9ab34`, comments `7a72f96`, reports `c8fc961`, users
+`9ded7c5`. Smoke suite 37/37 green against the production deployment.
+`VIDEO_PROVIDER=local` + `ALLOW_LOCAL_MEDIA=1` are set in production env;
+media now serves (85MB of demo media ships with the deploy — see ISSUE-008).
+**Open prod gap**: migration `0007_users_softdelete_check.sql` is applied to
+dev but NOT to the production Neon DB — `vercel env pull` redacts values,
+so the migration could not be run against prod from here. The operator must
+run `npm run db:migrate` against the prod DATABASE_URL out-of-band. Until
+then, soft-deleting a user via `/api/admin/users/[id]` DELETE will 500 in
+prod (the old `users_identifier_present` check trips on the nulled PII);
+comments and reports are unaffected.
 
 ## In Progress
 
