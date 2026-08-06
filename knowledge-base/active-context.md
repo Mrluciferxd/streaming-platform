@@ -40,18 +40,19 @@ mechanics that broke and the fix).
 
 ## In Progress
 
-Builds 2 and 3 of 4 are committed this session. Build 2 (comments):
-`/api/comments` (GET thread / POST top-level or reply) + `Comments` client
-component on the watch page — E2E-verified (15 cases incl. the `inArray`
-fix for the 22P02 malformed-array-literal regression). Build 3 (reports):
-public grievance intake at `POST /api/reports` + `ReportForm` on the
-`/legal/grievance` page, and admin triage queue at `/admin/reports` with
-`POST /api/admin/reports/[id]` enforcing the open -> reviewing ->
-(actioned | dismissed) state machine — E2E-verified (17 cases incl. the
-state-machine conflicts, non-admin 404, and validator rejections). Remaining
-build item: Build 4 (admin user management). The series admin API surface is
-verified end-to-end and the React rendering was given a visual browser pass
-before deploy; the account dashboard was
+All four "remaining" build items are committed this session. Build 2 (comments):
+`/api/comments` + `Comments` client component on the watch page. Build 3
+(reports): public grievance intake + admin triage queue with the
+state-machine API. Build 4 (admin users): roster at `/admin/users` with role
+change / soft delete / restore, backed by `/api/admin/users/[id]` and a new
+users query layer; this surface uncovered two real schema bugs (the
+`users_identifier_present` check tripped soft delete, and restore cannot
+re-create erased PII — both fixed, see ISSUE-009 pending + migration 0007).
+Remaining: deploy the three new commits (comments `7a72f96` already pushed,
+reports `c8fc961` already pushed, Build 4 pending) and re-randomize the
+admin-test password after E2E. The series admin API surface is verified
+end-to-end and the React rendering was given a visual browser pass before
+deploy; the account dashboard was
 curl-verified and visually checked.
 
 ## Blocked On

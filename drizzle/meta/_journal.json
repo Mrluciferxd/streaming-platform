@@ -50,6 +50,13 @@
       "when": 1785088197869,
       "tag": "0006_series_episodes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785168197869,
+      "tag": "0007_users_softdelete_check",
+      "breakpoints": true
     }
   ]
 }

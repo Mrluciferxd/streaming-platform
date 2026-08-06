@@ -2,6 +2,77 @@
 
 Newest first.
 
+## 2026-08-04 — Admin user management (role change, soft delete, restore)
+**What**: Admin user roster at `/admin/users` (new AdminNav "Users" tab) with
+inline role change, soft delete, and restore, backed by
+`/api/admin/users/[id]` (PATCH role / DELETE soft-delete / POST restore). A
+new users query layer (`src/lib/queries/users.ts`) paginates and filters by
+query + role (incl. a "deleted" filter that re-surfaces soft-deleted rows).
+Audit rows are written for every action (`user.role`, `user.delete`,
+`user.restore`) — `AuditAction` and the `entityType` union in
+`src/lib/queries/admin.ts` were extended to admit `user.*`.
+**Why**: The `users` table had no operator surface — role changes and
+DPDP-Act erasures were raw SQL. Build 4 of the four documented "remaining"
+items.
+
+**The two bugs this surface uncovered, both in the existing schema:**
+1. **`users_identifier_present` tripped soft delete.** The check required
+   `email IS NOT NULL OR phone IS NOT NULL` unconditionally; the soft-delete
+   handler nulls BOTH (PII erasure) and 500'd. Migration `0007_users_softdelete_check.sql`
+   replaces the check with `(email IS NOT NULL OR phone IS NOT NULL) OR deleted_at IS NOT NULL`,
+   so a deleted row may have no identifier and a live row must have one.
+2. **Restore cannot re-create the erased PII.** A restored row has nulled
+   email/phone, so unhole-ing it without re-adding an identifier would
+   re-trip the check. The POST handler therefore requires the operator to
+   supply a new `email`; a restore without one returns `email_required` 409.
+   This is honest — a DPDP erasure is irreversible; "restore" means the row
+   comes back with the operator's out-of-band email, not the erased one.
+
+**State machine / guards**: PATCH demoting an admin refuses `last_admin` 409
+(a deployment with zero admins cannot be re-adminned from the UI; the lockout
+recovery is raw SQL — the right place for a lockout to recovery). DELETE on
+the last admin refuses for the same reason. DELETE on already-deleted →
+`already_deleted` 409; POST on a live row → `not_deleted` 409. A non-operator
+gets 404 on all three methods (the operator-surface convention — 404 never
+403). Bad uuid → `not_found` 404; bad role → `invalid_request` 400.
+
+**Files Changed**:
+- New: `src/lib/queries/users.ts` (`listUsers`, `getUser`, `countAdmins`,
+  `updateUserRole`, `softDeleteUser`, `restoreUser`; `UserRow`, `UserRole`,
+  `UserListFilter`, `UserListPage`)
+- New: `src/app/api/admin/users/[id]/route.ts` (PATCH role / DELETE soft-
+  delete + PII null / POST restore-with-email; all in `db.transaction` with
+  `recordAudit`)
+- New: `src/app/admin/users/page.tsx` (server-rendered roster; search + role
+  filter; pagination)
+- New: `src/app/admin/users/UserActions.tsx` (client; inline role `<select>`
+  PATCHing on change; Delete with confirm; Restore with email prompt)
+- New: `drizzle/0007_users_softdelete_check.sql` (drop + replace the
+  identifier check to admit soft-deleted rows)
+- Modified: `src/db/schema.ts` (the check in the table definition tracks the
+  migration)
+- Modified: `src/lib/queries/admin.ts` (`AuditAction` adds `user.role`,
+  `user.delete`, `user.restore`; `entityType` admits `'user'`)
+- Modified: `src/app/admin/AdminNav.tsx` (added "Users" tab)
+- Modified: `drizzle/meta/_journal.json` (chains migration 0007)
+
+**Tests**: `npm test` 103 pass, 0 fail. `npx tsc --noEmit` clean. Migration
+applied to the dev DB via `npm run db:migrate`. E2E-verified (16 cases):
+role changes (viewer→mod→admin→viewer; the demote from admin works because
+admin-test is the last admin — the demote-PATCH-on-self correctly refuses
+`last_admin` 409 and DELETE-self correctly refuses `last_admin` 409), DELETE
+(a real soft-delete, nulled PII; second DELETE → `already_deleted`), PATCH
+on deleted → `not_found`, POST restore without email → `email_required`,
+POST restore with email → 200, POST restore again → `not_deleted`, bad role →
+`invalid_request`, missing role → 400, bogus uuid → `not_found`, all three
+methods anon → 404, admin page 200 with cookie / 404 without. Test session
+deleted; admin-test password re-randomized after. (Two subagents built the
+page + client component and drafted the E2E plan in parallel; their work was
+reviewed and the overcomplicated mint scripts they proposed were replaced
+with the simpler pattern used by the prior three builds.)
+
+**Commit**: pending
+
 ## 2026-08-04 — Grievance reports queue (IT Rules 2021 intake + triage)
 **What**: Public grievance intake (`POST /api/reports` + `ReportForm`
 component on the `/legal/grievance` page) and an admin triage queue at

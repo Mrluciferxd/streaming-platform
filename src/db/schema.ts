@@ -125,7 +125,10 @@ export const users = pgTable(
   (t) => [
     uniqueIndex('users_email_key').on(sql`lower(${t.email})`).where(sql`${t.deletedAt} is null`),
     uniqueIndex('users_phone_key').on(t.phone).where(sql`${t.deletedAt} is null`),
-    check('users_identifier_present', sql`${t.email} is not null or ${t.phone} is not null`),
+    // A live user must have email or phone; a soft-deleted user may have
+    // neither (both are nulled on delete). The original tight check tripped
+    // the soft-delete UPDATE; see drizzle/0007_users_softdelete_check.sql.
+    check('users_identifier_present', sql`(${t.email} is not null or ${t.phone} is not null) or ${t.deletedAt} is not null`),
   ],
 )
 

@@ -522,6 +522,9 @@ export type AuditAction =
   | 'episode.attach'
   | 'episode.update'
   | 'episode.detach'
+  | 'user.role'
+  | 'user.delete'
+  | 'user.restore'
 
 /**
  * Append a row to the compliance trail.
@@ -535,7 +538,7 @@ export async function recordAudit(
   entry: {
     actorId: string | null
     action: AuditAction
-    entityType: 'video' | 'category' | 'job' | 'series' | 'episode'
+    entityType: 'video' | 'category' | 'job' | 'series' | 'episode' | 'user'
     entityId?: string | null
     before?: unknown
     after?: unknown
